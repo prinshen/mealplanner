@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+<title>Mise</title>
+
+<!-- PWA / iOS fullscreen -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Mise" />
+<meta name="theme-color" content="#3B5D3A" />
+<link rel="apple-touch-icon" href="icon-180.png" />
+<link rel="icon" href="icon-180.png" />
+
+<!-- Inline manifest (no separate file) -->
+<link rel="manifest" href='data:application/manifest+json,{"name":"Mise","short_name":"Mise","start_url":".","display":"standalone","background_color":"%23F7F4EC","theme_color":"%233B5D3A","icons":[{"src":"icon-180.png","sizes":"180x180","type":"image/png"},{"src":"icon-512.png","sizes":"512x512","type":"image/png"}]}' />
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+<style>
+  :root{
+    --paper:#F7F4EC;
+    --card:#FFFFFF;
+    --card-2:#FBF9F3;
+    --ink:#23211C;
+    --muted:#8C8775;
+    --line:#E8E2D4;
+    --green:#3B5D3A;
+    --green-soft:#E9F0E5;
+    --amber:#B5792A;
+    --amber-soft:#F5ECD9;
+    --blue:#566A8C;
+    --blue-soft:#E8ECF3;
+    --danger:#B5483C;
+    --danger-soft:#F6E5E2;
+    --shadow:0 1px 2px rgba(40,36,24,.05), 0 6px 18px rgba(40,36,24,.05);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%; margin:0;}
+  body{
+    position:fixed; inset:0; width:100%; overflow:hidden;
+    background:var(--paper); color:var(--ink);
+    font-family:"Hanken Grotesk", system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  }
+  #root{height:100%;}
+  .app{display:flex; flex-direction:column; height:100%;}
+
+  /* Header */
+  .header{
+    flex:none;
+    padding:calc(env(safe-area-inset-top) + 14px) 20px 14px;
+    display:flex; align-items:center; gap:12px;
+    background:linear-gradient(var(--paper), rgba(247,244,236,.86));
+    backdrop-filter:saturate(1.1) blur(8px);
+    border-bottom:1px solid var(--line);
+    position:relative; z-index:5;
+  }
+  .h-title{font-family:"Fraunces", serif; font-weight:600; font-size:26px; letter-spacing:-.01em; margin:0; line-height:1;}
+  .h-sub{font-size:13px; color:var(--muted); margin-top:3px;}
+  .iconbtn{
+    flex:none; width:38px; height:38px; border-radius:50%;
+    display:grid; place-items:center; border:1px solid var(--line);
+    background:var(--card); color:var(--ink); cursor:pointer;
+  }
+  .iconbtn:active{transform:scale(.94);}
+  .header .spacer{flex:1;}
+
+  /* Content */
+  .content{
+    flex:1 1 auto; overflow-y:auto; -webkit-overflow-scrolling:touch;
+    overscroll-behavior-y:contain;
+    padding:18px 16px 110px;
+  }
+
+  /* Nav */
+  .nav{
+    flex:none; display:flex; justify-content:space-around; align-items:flex-start;
+    padding:10px 8px 30px; background:var(--card);
+    border-top:1px solid var(--line);
+    box-shadow:0 -2px 14px rgba(40,36,24,.04);
+  }
+  .tab{
+    appearance:none; border:none; background:none; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; gap:4px;
+    color:var(--muted); padding:4px 12px 0; min-width:60px;
+  }
+  .tab .pill{
+    width:54px; height:32px; border-radius:16px; display:grid; place-items:center;
+    transition:background .18s, color .18s;
+  }
+  .tab.active{color:var(--green);}
+  .tab.active .pill{background:var(--green-soft);}
+  .tab span{font-size:11px; font-weight:600; letter-spacing:.01em;}
+
+  /* Cards & generic */
+  .card{background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:var(--shadow);}
+  .section-label{font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin:0 6px 8px;}
+
+  /* Day list */
+  .day{
+    display:flex; align-items:center; gap:14px; width:100%;
+    padding:15px 16px; background:var(--card); border:1px solid var(--line);
+    border-radius:16px; margin-bottom:10px; cursor:pointer; text-align:left;
+    box-shadow:var(--shadow);
+  }
+  .day:active{transform:scale(.99);}
+  .day .dot{flex:none; width:10px; height:10px; border-radius:50%; background:var(--line);}
+  .day.cooking .dot{background:var(--green);}
+  .day.leftovers .dot{background:var(--amber);}
+  .day.out .dot{background:var(--blue);}
+  .day .d-name{font-family:"Fraunces",serif; font-weight:600; font-size:17px; margin:0;}
+  .day .d-meta{font-size:13.5px; color:var(--muted); margin-top:2px; line-height:1.3;}
+  .day .d-meta.set{color:var(--ink);}
+  .day .chev{margin-left:auto; color:var(--muted); flex:none;}
+  .day .grow{min-width:0;}
+  .ellip{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+
+  /* Segmented */
+  .seg{display:flex; gap:8px; margin-bottom:18px;}
+  .seg button{
+    flex:1; padding:11px 6px; border-radius:13px; border:1px solid var(--line);
+    background:var(--card); color:var(--ink); font-weight:600; font-size:14px; cursor:pointer;
+    font-family:inherit;
+  }
+  .seg button:active{transform:scale(.97);}
+  .seg button.on.cook{background:var(--green); border-color:var(--green); color:#fff;}
+  .seg button.on.left{background:var(--amber); border-color:var(--amber); color:#fff;}
+  .seg button.on.outt{background:var(--blue); border-color:var(--blue); color:#fff;}
+
+  /* Buttons */
+  .btn{
+    appearance:none; font-family:inherit; cursor:pointer; border-radius:13px;
+    padding:13px 16px; font-size:15px; font-weight:600; border:1px solid var(--line);
+    background:var(--card); color:var(--ink); width:100%;
+    display:flex; align-items:center; justify-content:center; gap:9px;
+  }
+  .btn:active{transform:scale(.985);}
+  .btn.primary{background:var(--green); border-color:var(--green); color:#fff;}
+  .btn.ghost{background:transparent;}
+  .btn.danger{color:var(--danger); border-color:var(--danger-soft); background:var(--danger-soft);}
+  .btn[disabled]{opacity:.55; pointer-events:none;}
+  .btn.sm{padding:10px 13px; font-size:14px; width:auto;}
+
+  .addrow{display:flex; gap:9px; margin-bottom:12px;}
+  input.field, select.field, textarea.field{
+    width:100%; font-family:inherit; font-size:16px; color:var(--ink);
+    background:var(--card); border:1px solid var(--line); border-radius:13px;
+    padding:13px 14px; outline:none;
+  }
+  input.field:focus, select.field:focus, textarea.field:focus{border-color:var(--green);}
+  select.field{appearance:none; -webkit-appearance:none; background-image:none;}
+
+  .hint{font-size:13px; color:var(--muted); line-height:1.5; margin:8px 2px 0;}
+  .hint a{color:var(--green); font-weight:600; text-decoration:none;}
+
+  /* Ingredient rows */
+  .ing{
+    display:flex; align-items:center; gap:10px; padding:12px 12px 12px 14px;
+    border-bottom:1px solid var(--line);
+  }
+  .ing:last-child{border-bottom:none;}
+  .ing .nm{flex:1; font-size:15px; min-width:0;}
+  .cat{
+    flex:none; font-size:11px; font-weight:600; padding:3px 8px; border-radius:999px;
+    background:var(--card-2); color:var(--muted); border:1px solid var(--line); white-space:nowrap;
+  }
+  .x{
+    flex:none; width:30px; height:30px; border-radius:50%; border:none; background:transparent;
+    color:var(--muted); display:grid; place-items:center; cursor:pointer;
+  }
+  .x:active{background:var(--danger-soft); color:var(--danger);}
+
+  /* Pantry */
+  .p-item{
+    display:flex; align-items:center; gap:8px; padding:13px 12px 13px 16px;
+    border-bottom:1px solid var(--line); cursor:pointer;
+  }
+  .p-item:last-child{border-bottom:none;}
+  .p-item .pn{flex:1; font-size:15px;}
+  .p-item.used .pn{color:var(--muted); text-decoration:line-through;}
+  .p-check{flex:none; width:22px; height:22px; border-radius:7px; border:2px solid var(--line); display:grid; place-items:center; color:#fff;}
+  .p-item.used .p-check{background:var(--green); border-color:var(--green);}
+
+  /* Shopping list */
+  .s-item{
+    display:flex; align-items:center; gap:12px; padding:13px 14px;
+    border-bottom:1px solid var(--line); cursor:pointer;
+  }
+  .s-item:last-child{border-bottom:none;}
+  .s-item .sn{flex:1; font-size:15.5px;}
+  .s-item.done .sn{color:var(--muted); text-decoration:line-through;}
+  .s-check{flex:none; width:24px; height:24px; border-radius:50%; border:2px solid var(--line); display:grid; place-items:center; color:#fff;}
+  .s-item.done .s-check{background:var(--green); border-color:var(--green);}
+
+  /* Empty */
+  .empty{text-align:center; padding:54px 24px; color:var(--muted);}
+  .empty .big{font-family:"Fraunces",serif; font-size:21px; color:var(--ink); margin:14px 0 6px; font-weight:500;}
+  .empty p{font-size:14.5px; line-height:1.5; margin:0;}
+
+  .spin{width:26px; height:26px; border-radius:50%; border:3px solid var(--green-soft); border-top-color:var(--green); animation:sp .8s linear infinite;}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .loadbox{display:flex; flex-direction:column; align-items:center; gap:14px; padding:36px 20px; color:var(--muted); font-size:14.5px;}
+
+  .errbox{background:var(--danger-soft); color:var(--danger); border-radius:13px; padding:13px 14px; font-size:13.5px; line-height:1.5; margin-bottom:12px;}
+
+  .toast{
+    position:fixed; left:50%; bottom:104px; transform:translateX(-50%) translateY(20px);
+    background:var(--ink); color:#fff; padding:11px 18px; border-radius:999px; font-size:14px; font-weight:600;
+    opacity:0; transition:opacity .2s, transform .2s; pointer-events:none; z-index:50; box-shadow:var(--shadow);
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  .stack > * + *{margin-top:10px;}
+  .row2{display:flex; gap:10px;}
+  .row2 > *{flex:1;}
+  .fade{animation:fade .25s ease both;}
+  @keyframes fade{from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:none;}}
+  .count-pill{font-size:13px; color:var(--muted); background:var(--card-2); border:1px solid var(--line); padding:3px 10px; border-radius:999px;}
+  .title-input{font-family:"Fraunces",serif; font-weight:600; font-size:20px; border:none; background:transparent; width:100%; padding:0 0 10px; outline:none; color:var(--ink); border-bottom:1px solid var(--line); margin-bottom:6px;}
+  label.lbl{display:block; font-size:13px; font-weight:600; color:var(--muted); margin:0 2px 7px;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+const {useState, useEffect, useRef, useMemo} = React;
+
+/* ---------- constants ---------- */
+const KEY = "mise.v1";
+const MODEL = "claude-haiku-4-5-20251001";
+const MODEL_LABEL = "Claude Haiku 4.5";
+
+const DAYS = [
+  {key:"mon", label:"Monday"},
+  {key:"tue", label:"Tuesday"},
+  {key:"wed", label:"Wednesday"},
+  {key:"thu", label:"Thursday"},
+  {key:"fri", label:"Friday"},
+  {key:"sat", label:"Saturday"},
+  {key:"sun", label:"Sunday"},
+];
+
+const CATS = [
+  {key:"produce",    label:"Produce"},
+  {key:"meat_fish",  label:"Meat & Fish"},
+  {key:"dairy_eggs", label:"Dairy & Eggs"},
+  {key:"bakery",     label:"Bakery"},
+  {key:"pantry",     label:"Pantry"},
+  {key:"frozen",     label:"Frozen"},
+  {key:"spices",     label:"Herbs & Spices"},
+  {key:"other",      label:"Other"},
+];
+const CAT_LABEL = Object.fromEntries(CATS.map(c=>[c.key,c.label]));
+const CAT_ORDER = CATS.map(c=>c.key);
+const VALID_CATS = new Set(CAT_ORDER);
+
+const DEFAULT = {
+  apiKey:"",
+  days:Object.fromEntries(DAYS.map(d=>[d.key,{status:"empty", recipe:null}])),
+  pantry:[],
+  checked:{},
+};
+
+/* ---------- storage ---------- */
+function loadState(){
+  try{
+    const raw = localStorage.getItem(KEY);
+    if(!raw) return JSON.parse(JSON.stringify(DEFAULT));
+    const s = JSON.parse(raw);
+    const days = {};
+    DAYS.forEach(d=>{ days[d.key] = (s.days && s.days[d.key]) || {status:"empty", recipe:null}; });
+    return {
+      ...DEFAULT, ...s,
+      days,
+      pantry: Array.isArray(s.pantry) ? s.pantry : [],
+      checked: s.checked || {},
+    };
+  }catch(e){ return JSON.parse(JSON.stringify(DEFAULT)); }
+}
+
+/* ---------- text helpers ---------- */
+const STOP = new Set(("of for the a an and or with to in on fresh dried ground chopped diced minced sliced large small medium ripe boneless skinless extra virgin pure raw whole grated shredded peeled finely roughly thinly into cut about plus more taste room temperature can cans jar packet package box bunch clove cloves slice slices pinch handful cup cups tbsp tsp tablespoon tablespoons teaspoon teaspoons gram grams g kg ml l oz ounce ounces lb lbs pound pounds litre liter quart pint qt").split(" "));
+
+function singular(w){
+  if(w.length>4 && w.endsWith("ies")) return w.slice(0,-3)+"y";        // berries -> berry
+  if(w.length>4 && w.endsWith("oes")) return w.slice(0,-2);            // tomatoes -> tomato
+  if(w.length>4 && /(ses|xes|ches|shes)$/.test(w)) return w.slice(0,-2); // glasses -> glass
+  if(w.length>3 && w.endsWith("s") && !w.endsWith("ss")) return w.slice(0,-1);
+  return w;
+}
+function tokens(name){
+  return String(name||"").toLowerCase()
+    .replace(/\([^)]*\)/g," ")
+    .replace(/[^a-z\s]/g," ")
+    .split(/\s+/)
+    .filter(w=>w && !STOP.has(w))
+    .map(singular)
+    .filter(Boolean);
+}
+const keyOf = name => tokens(name).sort().join(" ");
+
+function subset(a,b){ return a.length>0 && a.every(t=>b.includes(t)); }
+function sameThing(aName,bName){
+  const a=tokens(aName), b=tokens(bName);
+  if(!a.length||!b.length) return false;
+  return subset(a,b) || subset(b,a);
+}
+
+/* lightweight local categoriser (pantry adds + fallback) */
+const CAT_RULES = [
+  ["meat_fish", "chicken beef pork salmon tuna shrimp prawn bacon sausage turkey fish lamb mince steak cod haddock mackerel ham chorizo anchovy"],
+  ["dairy_eggs","milk cheese butter egg eggs yogurt yoghurt cream parmesan mozzarella feta cheddar ricotta mascarpone creme"],
+  ["bakery",    "bread bun buns tortilla tortillas baguette roll rolls pita naan croissant bagel brioche"],
+  ["frozen",    "frozen icecream"],
+  ["spices",    "salt pepper cumin paprika oregano basil thyme rosemary cinnamon chili chilli curry coriander parsley cilantro nutmeg cardamom turmeric ginger garlic vanilla bayleaf saffron sage dill mint"],
+  ["pantry",    "rice pasta flour sugar oil vinegar bean beans lentil lentils stock broth sauce paste canned noodle noodles oat oats honey soy ketchup mustard mayo mayonnaise tomato passata coconut chickpea couscous quinoa cornstarch baking yeast syrup jam peanut tahini sesame stockcube bouillon"],
+  ["produce",   "lettuce tomato onion shallot carrot potato spinach cucumber lemon lime apple banana avocado mushroom broccoli zucchini courgette celery cabbage kale pepper capsicum corn pea peas lime orange lime scallion leek aubergine eggplant cauliflower bean sprout lime herb spring"],
+];
+function localCat(name){
+  const t = tokens(name);
+  for(const w of t){
+    for(const [cat,words] of CAT_RULES){
+      if(words.split(" ").includes(w)) return cat;
+    }
+  }
+  return "other";
+}
+
+/* ---------- image downscale ---------- */
+function fileToScaledJpeg(file, maxDim=1400, q=0.82){
+  return new Promise((res,rej)=>{
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = ()=>{
+      let {width:w, height:h} = img;
+      const scale = Math.min(1, maxDim/Math.max(w,h));
+      w = Math.round(w*scale); h = Math.round(h*scale);
+      const c = document.createElement("canvas");
+      c.width=w; c.height=h;
+      c.getContext("2d").drawImage(img,0,0,w,h);
+      URL.revokeObjectURL(url);
+      const data = c.toDataURL("image/jpeg", q).split(",")[1];
+      res({data, mediaType:"image/jpeg"});
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); rej(new Error("Couldn't read that image.")); };
+    img.src = url;
+  });
+}
+
+/* ---------- API ---------- */
+const SYS = `You extract the shopping-relevant ingredients from a recipe for a meal-planning app.
+Rules:
+- Give each ingredient a short, generic shopping name with NO quantities and NO prep words (e.g. "chicken thighs", "olive oil", "garlic", "parmesan").
+- Combine duplicates.
+- Skip water and salt/pepper only if they are trivial; otherwise include.
+- Assign each ingredient one category from EXACTLY this list: produce, meat_fish, dairy_eggs, bakery, pantry, frozen, spices, other.
+Respond with ONLY a JSON object, no markdown fences and no commentary, shaped exactly:
+{"title":"Recipe name","ingredients":[{"name":"...","category":"..."}]}`;
+
+async function callClaude(apiKey, body, beta){
+  const headers = {
+    "content-type":"application/json",
+    "x-api-key":apiKey,
+    "anthropic-version":"2023-06-01",
+    "anthropic-dangerous-direct-browser-access":"true",
+  };
+  if(beta) headers["anthropic-beta"] = beta;
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method:"POST",
+    headers,
+    body:JSON.stringify(body),
+  });
+  if(!r.ok){
+    let msg = "Request failed ("+r.status+").";
+    try{ const e=await r.json(); if(e.error && e.error.message) msg = e.error.message; }catch(_){}
+    if(r.status===401) msg = "API key was rejected. Check it in Settings.";
+    throw new Error(msg);
+  }
+  return r.json();
+}
+
+function parseResult(data){
+  const text = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
+  const m = text.match(/\{[\s\S]*\}/);
+  if(!m) throw new Error("Couldn't read an ingredient list from that. Try a different link, or add by hand.");
+  let obj;
+  try{ obj = JSON.parse(m[0]); }
+  catch(_){ throw new Error("The recipe didn't parse cleanly. Try again or add by hand."); }
+  const ings = (obj.ingredients||[]).map(i=>{
+    const name = String(i.name||"").trim();
+    let cat = String(i.category||"").trim();
+    if(!VALID_CATS.has(cat)) cat = localCat(name);
+    return name ? {name, category:cat} : null;
+  }).filter(Boolean);
+  if(!ings.length) throw new Error("No ingredients found. Try another source or add by hand.");
+  return {title:(obj.title||"").trim(), ingredients:ings};
+}
+
+async function extractFromUrl(apiKey, url){
+  const data = await callClaude(apiKey, {
+    model:MODEL, max_tokens:1200, system:SYS,
+    messages:[{role:"user", content:"Fetch the recipe at this URL and extract its ingredients:\n"+url}],
+    tools:[{type:"web_fetch_20250910", name:"web_fetch", max_uses:3, max_content_tokens:30000}],
+  }, "web-fetch-2025-09-10");
+  return parseResult(data);
+}
+async function extractFromImage(apiKey, b64, mediaType){
+  const data = await callClaude(apiKey, {
+    model:MODEL, max_tokens:1500, system:SYS,
+    messages:[{role:"user", content:[
+      {type:"image", source:{type:"base64", media_type:mediaType, data:b64}},
+      {type:"text", text:"Extract the ingredients from this recipe screenshot."},
+    ]}],
+  });
+  return parseResult(data);
+}
+
+/* ---------- icons ---------- */
+const S = ({d, ...p}) => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" {...p}>{d}</svg>;
+const IcWeek=p=><S {...p} d={<><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/></>} />;
+const IcPantry=p=><S {...p} d={<><path d="M4 8l8-4 8 4v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8z"/><path d="M9 13h6"/></>} />;
+const IcList=p=><S {...p} d={<><path d="M9 5h9M9 12h9M9 19h9"/><path d="M4 5l1.2 1.2L7 4M4 12l1.2 1.2L7 11M4 19l1.2 1.2L7 18"/></>} />;
+const IcGear=p=><S {...p} d={<><circle cx="12" cy="12" r="3.2"/><path d="M19.4 13.5a7.8 7.8 0 0 0 0-3l1.8-1.4-1.8-3.1-2.2.9a7.6 7.6 0 0 0-2.6-1.5l-.3-2.4h-3.6l-.3 2.4a7.6 7.6 0 0 0-2.6 1.5l-2.2-.9-1.8 3.1L4.6 10.5a7.8 7.8 0 0 0 0 3l-1.8 1.4 1.8 3.1 2.2-.9a7.6 7.6 0 0 0 2.6 1.5l.3 2.4h3.6l.3-2.4a7.6 7.6 0 0 0 2.6-1.5l2.2.9 1.8-3.1z"/></>} />;
+const IcBack=p=><S {...p} d={<path d="M15 5l-7 7 7 7"/>} />;
+const IcChev=p=><S {...p} width="18" height="18" d={<path d="M9 5l7 7-7 7"/>} />;
+const IcLink=p=><S {...p} d={<><path d="M10 13a4 4 0 0 0 5.7 0l2.3-2.3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 11a4 4 0 0 0-5.7 0L6 13.3a4 4 0 0 0 5.7 5.7l1-1"/></>} />;
+const IcCam=p=><S {...p} d={<><path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L19 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H3z"/><circle cx="13" cy="12.5" r="3.4"/></>} />;
+const IcClose=p=><S {...p} width="18" height="18" d={<path d="M6 6l12 12M18 6L6 18"/>} />;
+const IcCheck=p=><S {...p} width="15" height="15" strokeWidth="2.6" d={<path d="M5 12l4.5 4.5L19 6"/>} />;
+const IcCopy=p=><S {...p} d={<><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></>} />;
+const IcPlus=p=><S {...p} d={<path d="M12 5v14M5 12h14"/>} />;
+const IcFork=p=><S {...p} d={<><path d="M8 3v6a2 2 0 0 0 2 2v10M8 3v5M11 3v5M16 3c-1.5 0-2 2-2 4s.5 4 2 4v9"/></>} />;
+
+/* ============================================================= */
+function App(){
+  const [state, setState] = useState(loadState);
+  const [tab, setTab] = useState("week");
+  const [openDay, setOpenDay] = useState(null);
+  const [toast, setToast] = useState("");
+
+  useEffect(()=>{ localStorage.setItem(KEY, JSON.stringify(state)); }, [state]);
+  useEffect(()=>{
+    if(!toast) return;
+    const t=setTimeout(()=>setToast(""), 1700); return ()=>clearTimeout(t);
+  }, [toast]);
+
+  const set = (fn)=> setState(s=>fn({...s}));
+  const flash = (m)=> setToast(m);
+
+  const titles = {week:["Mise","Your week of dinners"], pantry:["Pantry","What you've got"], list:["Shopping List", null], settings:["Settings", null]};
+  const day = openDay ? DAYS.find(d=>d.key===openDay) : null;
+
+  return (
+    <div className="app">
+      <header className="header">
+        {openDay
+          ? <><button className="iconbtn" onClick={()=>setOpenDay(null)} aria-label="Back"><IcBack/></button>
+              <div><h1 className="h-title">{day.label}</h1><div className="h-sub">Dinner</div></div></>
+          : <div><h1 className="h-title">{titles[tab][0]}</h1>{titles[tab][1] && <div className="h-sub">{titles[tab][1]}</div>}</div>}
+      </header>
+
+      <main className="content">
+        {openDay
+          ? <DayDetail state={state} set={set} dayKey={openDay} flash={flash} />
+          : tab==="week"     ? <Week state={state} onOpen={setOpenDay} />
+          : tab==="pantry"   ? <Pantry state={state} set={set} />
+          : tab==="list"     ? <Shopping state={state} set={set} flash={flash} />
+          :                    <Settings state={state} set={set} flash={flash} />}
+      </main>
+
+      <nav className="nav">
+        {[["week","Week",IcWeek],["pantry","Pantry",IcPantry],["list","List",IcList],["settings","Settings",IcGear]].map(([k,lbl,Ic])=>(
+          <button key={k} className={"tab"+(tab===k&&!openDay?" active":"")} onClick={()=>{setTab(k); setOpenDay(null);}}>
+            <span className="pill"><Ic/></span><span>{lbl}</span>
+          </button>
+        ))}
+      </nav>
+
+      <div className={"toast"+(toast?" show":"")}>{toast}</div>
+    </div>
+  );
+}
+
+/* ---------- Week ---------- */
+function Week({state, onOpen}){
+  return (
+    <div className="fade">
+      {DAYS.map(d=>{
+        const day = state.days[d.key];
+        const r = day.recipe;
+        let cls="day", meta="Tap to plan", set=false;
+        if(day.status==="cooking"){ cls+=" cooking"; meta = r ? (r.title||"Recipe added") : "Cooking — add a recipe"; set=!!r; }
+        else if(day.status==="leftovers"){ cls+=" leftovers"; meta="Leftovers"; set=true; }
+        else if(day.status==="out"){ cls+=" out"; meta="Eating out"; set=true; }
+        return (
+          <button key={d.key} className={cls} onClick={()=>onOpen(d.key)}>
+            <span className="dot"></span>
+            <span className="grow">
+              <p className="d-name">{d.label}</p>
+              <div className={"d-meta ellip"+(set?" set":"")}>{meta}{day.status==="cooking"&&r?`  ·  ${r.ingredients.length} items`:""}</div>
+            </span>
+            <span className="chev"><IcChev/></span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ---------- Day detail ---------- */
+function DayDetail({state, set, dayKey, flash}){
+  const day = state.days[dayKey];
+  const recipe = day.recipe;
+  const [mode, setMode] = useState(null);     // null | 'url' | 'manual'
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [busyMsg, setBusyMsg] = useState("");
+  const [err, setErr] = useState("");
+  const [newIng, setNewIng] = useState("");
+  const [newCat, setNewCat] = useState("other");
+  const fileRef = useRef(null);
+
+  const apiKey = state.apiKey.trim();
+
+  const setDay = (patch)=> set(s=>{ s.days={...s.days, [dayKey]:{...s.days[dayKey], ...patch}}; return s; });
+
+  const setStatus = (status)=>{
+    if(status==="cooking") setDay({status});
+    else setDay({status, recipe:null});
+    setMode(null); setErr("");
+  };
+
+  const run = async (fn)=>{
+    if(!apiKey){ setErr("Add your Anthropic API key in Settings first."); return; }
+    setErr(""); setBusy(true);
+    try{
+      const res = await fn();
+      setDay({status:"cooking", recipe:res});
+      setMode(null); setUrl("");
+    }catch(e){ setErr(e.message||"Something went wrong."); }
+    finally{ setBusy(false); setBusyMsg(""); }
+  };
+
+  const doUrl = ()=>{
+    const u = url.trim();
+    if(!u){ return; }
+    setBusyMsg("Reading the recipe…");
+    run(()=>extractFromUrl(apiKey, u));
+  };
+  const doImage = async (e)=>{
+    const f = e.target.files && e.target.files[0];
+    e.target.value="";
+    if(!f) return;
+    setBusyMsg("Reading the screenshot…");
+    setBusy(true); setErr("");
+    if(!apiKey){ setErr("Add your Anthropic API key in Settings first."); setBusy(false); return; }
+    try{
+      const {data, mediaType} = await fileToScaledJpeg(f);
+      const res = await extractFromImage(apiKey, data, mediaType);
+      setDay({status:"cooking", recipe:res});
+      setMode(null);
+    }catch(err2){ setErr(err2.message||"Couldn't read that image."); }
+    finally{ setBusy(false); setBusyMsg(""); }
+  };
+
+  const removeIng = (i)=> setDay({recipe:{...recipe, ingredients:recipe.ingredients.filter((_,idx)=>idx!==i)}});
+  const addIng = ()=>{
+    const nm = newIng.trim(); if(!nm) return;
+    setDay({status:"cooking", recipe:{
+      title: recipe?recipe.title:"",
+      ingredients:[...(recipe?recipe.ingredients:[]), {name:nm, category:newCat}],
+    }});
+    setNewIng(""); setNewCat("other");
+  };
+  const editTitle = (t)=> setDay({recipe:{...recipe, title:t}});
+
+  return (
+    <div className="fade">
+      <div className="seg">
+        <button className={"cook"+(day.status==="cooking"?" on cook":"")} onClick={()=>setStatus("cooking")}>Cooking</button>
+        <button className={"left"+(day.status==="leftovers"?" on left":"")} onClick={()=>setStatus("leftovers")}>Leftovers</button>
+        <button className={"outt"+(day.status==="out"?" on outt":"")} onClick={()=>setStatus("out")}>Eating out</button>
+      </div>
+
+      {day.status==="leftovers" && <div className="empty"><div className="big">Leftovers night</div><p>No shopping needed — nothing added to your list.</p></div>}
+      {day.status==="out" && <div className="empty"><div className="big">Eating out</div><p>Enjoy. Nothing added to your list.</p></div>}
+
+      {day.status==="cooking" && (
+        <>
+          {busy && <div className="loadbox"><div className="spin"></div>{busyMsg||"Working…"}</div>}
+          {err && !busy && <div className="errbox">{err}</div>}
+
+          {!busy && recipe && (
+            <>
+              <div className="card" style={{padding:"15px 16px", marginBottom:14}}>
+                <input className="title-input" value={recipe.title} placeholder="Recipe name"
+                  onChange={e=>editTitle(e.target.value)} />
+                <div style={{display:"flex", alignItems:"center", justifyContent:"space-between"}}>
+                  <span className="count-pill">{recipe.ingredients.length} ingredients</span>
+                  <button className="x" style={{width:"auto", padding:"4px 8px", fontSize:13, color:"var(--danger)"}}
+                    onClick={()=>{ setDay({recipe:null}); setMode(null); }}>Remove</button>
+                </div>
+              </div>
+
+              <div className="card" style={{marginBottom:14, overflow:"hidden"}}>
+                {recipe.ingredients.map((ing,i)=>(
+                  <div className="ing" key={i}>
+                    <span className="nm ellip">{ing.name}</span>
+                    <span className="cat">{CAT_LABEL[ing.category]||"Other"}</span>
+                    <button className="x" onClick={()=>removeIng(i)} aria-label="Remove"><IcClose/></button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {!busy && !recipe && mode===null && (
+            <div className="stack">
+              <button className="btn primary" onClick={()=>{setMode("url"); setErr("");}}><IcLink/> Paste a recipe link</button>
+              <button className="btn" onClick={()=>fileRef.current && fileRef.current.click()}><IcCam/> Add a screenshot</button>
+              <button className="btn ghost" onClick={()=>{setMode("manual"); setErr("");}}><IcPlus/> Add ingredients by hand</button>
+              <p className="hint">Claude reads the recipe and pulls out the ingredients. You can edit the list afterwards.</p>
+            </div>
+          )}
+
+          {!busy && !recipe && mode==="url" && (
+            <div className="stack">
+              <input className="field" type="url" inputMode="url" placeholder="https://…" value={url}
+                autoFocus onChange={e=>setUrl(e.target.value)}
+                onKeyDown={e=>{ if(e.key==="Enter") doUrl(); }} />
+              <div className="row2">
+                <button className="btn ghost" onClick={()=>setMode(null)}>Cancel</button>
+                <button className="btn primary" onClick={doUrl} disabled={!url.trim()}>Get ingredients</button>
+              </div>
+            </div>
+          )}
+
+          {/* manual entry / add-more list (shown when manual mode OR a recipe exists) */}
+          {!busy && (mode==="manual" || recipe) && (
+            <div className="card" style={{padding:"14px 14px 16px"}}>
+              <label className="lbl">Add an ingredient</label>
+              <div className="addrow">
+                <input className="field" placeholder="e.g. garlic" value={newIng}
+                  onChange={e=>{ setNewIng(e.target.value); setNewCat(localCat(e.target.value)); }}
+                  onKeyDown={e=>{ if(e.key==="Enter") addIng(); }} />
+                <button className="btn primary sm" onClick={addIng} disabled={!newIng.trim()}><IcPlus/></button>
+              </div>
+              <select className="field" value={newCat} onChange={e=>setNewCat(e.target.value)}>
+                {CATS.map(c=><option key={c.key} value={c.key}>{c.label}</option>)}
+              </select>
+              {mode==="manual" && !recipe && <p className="hint" style={{marginTop:12}}>Added items go straight to your shopping list (minus anything in your pantry).</p>}
+            </div>
+          )}
+
+          <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={doImage} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ---------- Pantry ---------- */
+function Pantry({state, set}){
+  const [name, setName] = useState("");
+  const add = ()=>{
+    const n = name.trim(); if(!n) return;
+    set(s=>{ s.pantry=[{id:Date.now()+"-"+Math.random().toString(36).slice(2,7), name:n, category:localCat(n), used:false}, ...s.pantry]; return s; });
+    setName("");
+  };
+  const toggle = (id)=> set(s=>{ s.pantry=s.pantry.map(p=>p.id===id?{...p,used:!p.used}:p); return s; });
+  const del = (id)=> set(s=>{ s.pantry=s.pantry.filter(p=>p.id!==id); return s; });
+  const clearUsed = ()=> set(s=>{ s.pantry=s.pantry.filter(p=>!p.used); return s; });
+
+  const active = state.pantry.filter(p=>!p.used);
+  const used = state.pantry.filter(p=>p.used);
+
+  return (
+    <div className="fade">
+      <div className="addrow">
+        <input className="field" placeholder="Add something you have…" value={name}
+          onChange={e=>setName(e.target.value)} onKeyDown={e=>{ if(e.key==="Enter") add(); }} />
+        <button className="btn primary sm" onClick={add} disabled={!name.trim()}><IcPlus/></button>
+      </div>
+
+      {state.pantry.length===0 && (
+        <div className="empty"><IcPantry width="40" height="40" style={{color:"var(--line)"}} />
+          <div className="big">Your pantry is empty</div>
+          <p>Add staples you keep around — they'll be skipped on your shopping list.</p></div>
+      )}
+
+      {active.length>0 && (
+        <>
+          <div className="section-label" style={{marginTop:6}}>Have ({active.length})</div>
+          <div className="card" style={{overflow:"hidden", marginBottom:16}}>
+            {active.map(p=>(
+              <div className="p-item" key={p.id} onClick={()=>toggle(p.id)}>
+                <span className="p-check"></span>
+                <span className="pn ellip">{p.name}</span>
+                <span className="cat">{CAT_LABEL[p.category]}</span>
+                <button className="x" onClick={e=>{e.stopPropagation(); del(p.id);}} aria-label="Delete"><IcClose/></button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {used.length>0 && (
+        <>
+          <div className="section-label" style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+            <span>Used up ({used.length})</span>
+            <button onClick={clearUsed} style={{border:"none", background:"none", color:"var(--green)", fontWeight:700, fontSize:12, letterSpacing:".04em", textTransform:"uppercase", cursor:"pointer"}}>Clear</button>
+          </div>
+          <div className="card" style={{overflow:"hidden"}}>
+            {used.map(p=>(
+              <div className="p-item used" key={p.id} onClick={()=>toggle(p.id)}>
+                <span className="p-check"><IcCheck/></span>
+                <span className="pn ellip">{p.name}</span>
+                <button className="x" onClick={e=>{e.stopPropagation(); del(p.id);}} aria-label="Delete"><IcClose/></button>
+              </div>
+            ))}
+          </div>
+          <p className="hint">Crossed-off items count as "need to buy" again. Tap to restore.</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ---------- Shopping list ---------- */
+function buildList(state){
+  const pantryActive = state.pantry.filter(p=>!p.used);
+  const map = new Map(); // key -> {name, category}
+  DAYS.forEach(d=>{
+    const day = state.days[d.key];
+    if(day.status==="cooking" && day.recipe){
+      day.recipe.ingredients.forEach(ing=>{
+        const k = keyOf(ing.name);
+        if(!k) return;
+        if(!map.has(k)) map.set(k, {name:ing.name, category:ing.category||"other"});
+        else if(map.get(k).category==="other" && ing.category) map.get(k).category=ing.category;
+      });
+    }
+  });
+  // remove pantry matches
+  const items = [];
+  for(const [k,v] of map){
+    const have = pantryActive.some(p=>sameThing(p.name, v.name));
+    if(!have) items.push({key:k, ...v});
+  }
+  // group
+  const groups = CAT_ORDER.map(cat=>({cat, label:CAT_LABEL[cat], items:items.filter(i=>i.category===cat).sort((a,b)=>a.name.localeCompare(b.name))})).filter(g=>g.items.length);
+  return {groups, total:items.length};
+}
+
+function Shopping({state, set, flash}){
+  const {groups, total} = useMemo(()=>buildList(state), [state.days, state.pantry]);
+  const toggle = (k)=> set(s=>{ s.checked={...s.checked, [k]:!s.checked[k]}; return s; });
+
+  const copy = async ()=>{
+    let txt = "SHOPPING LIST\n\n";
+    groups.forEach(g=>{
+      txt += g.label+"\n";
+      g.items.forEach(i=> txt += "  - "+i.name+"\n");
+      txt += "\n";
+    });
+    txt = txt.trim();
+    try{
+      if(navigator.clipboard && navigator.clipboard.writeText){ await navigator.clipboard.writeText(txt); }
+      else{
+        const ta=document.createElement("textarea"); ta.value=txt; ta.style.position="fixed"; ta.style.opacity="0";
+        document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta);
+      }
+      flash("Copied to clipboard");
+    }catch(_){ flash("Couldn't copy"); }
+  };
+
+  if(total===0){
+    return <div className="empty fade"><IcList width="40" height="40" style={{color:"var(--line)"}} />
+      <div className="big">Nothing to buy</div>
+      <p>Plan some dinners with recipes, or you've already got everything in your pantry.</p></div>;
+  }
+
+  return (
+    <div className="fade">
+      <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", margin:"0 4px 14px"}}>
+        <span className="count-pill">{total} item{total!==1?"s":""}</span>
+        <button className="btn primary sm" onClick={copy}><IcCopy/> Copy</button>
+      </div>
+      {groups.map(g=>(
+        <div key={g.cat} style={{marginBottom:16}}>
+          <div className="section-label">{g.label}</div>
+          <div className="card" style={{overflow:"hidden"}}>
+            {g.items.map(i=>{
+              const done = !!state.checked[i.key];
+              return (
+                <div className={"s-item"+(done?" done":"")} key={i.key} onClick={()=>toggle(i.key)}>
+                  <span className="s-check">{done && <IcCheck/>}</span>
+                  <span className="sn ellip">{i.name}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      <p className="hint">Tap items to check them off as you shop. Copy sends the full list to your clipboard.</p>
+    </div>
+  );
+}
+
+/* ---------- Settings ---------- */
+function Settings({state, set, flash}){
+  const [show, setShow] = useState(false);
+  const setKey = (v)=> set(s=>{ s.apiKey=v; return s; });
+  const newWeek = ()=>{
+    if(!confirm("Clear all dinners for the week? Your pantry stays.")) return;
+    set(s=>{ s.days=Object.fromEntries(DAYS.map(d=>[d.key,{status:"empty",recipe:null}])); s.checked={}; return s; });
+    flash("Fresh week ready");
+  };
+
+  return (
+    <div className="fade">
+      <div className="section-label">Anthropic API key</div>
+      <div className="card" style={{padding:"14px 14px 16px", marginBottom:8}}>
+        <div className="addrow" style={{marginBottom:0}}>
+          <input className="field" type={show?"text":"password"} placeholder="sk-ant-…"
+            value={state.apiKey} onChange={e=>setKey(e.target.value)}
+            autoCapitalize="off" autoCorrect="off" spellCheck="false" />
+          <button className="btn sm" onClick={()=>setShow(v=>!v)}>{show?"Hide":"Show"}</button>
+        </div>
+      </div>
+      <p className="hint">
+        Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.
+        Recipe links are read with Claude's web-fetch tool — no extra setup needed.
+        The key is stored only on this device, and runs on {MODEL_LABEL} to keep costs low.
+      </p>
+
+      <div className="section-label" style={{marginTop:24}}>This week</div>
+      <button className="btn danger" onClick={newWeek}>Start a fresh week</button>
+      <p className="hint">Clears every dinner and the checked-off shopping items. Pantry is untouched.</p>
+
+      <div className="section-label" style={{marginTop:24}}>About</div>
+      <div className="card" style={{padding:"15px 16px"}}>
+        <div style={{display:"flex", alignItems:"center", gap:12}}>
+          <span style={{color:"var(--green)"}}><IcFork/></span>
+          <div>
+            <div style={{fontFamily:"Fraunces,serif", fontWeight:600, fontSize:17}}>Mise</div>
+            <div className="h-sub">Plan dinners · {MODEL_LABEL}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+
+<script>
+if("serviceWorker" in navigator){
+  window.addEventListener("load", ()=>{ navigator.serviceWorker.register("sw.js").catch(()=>{}); });
+}
+</script>
+</body>
+</html>
