@@ -1,5 +1,5 @@
 // Bump this on every deploy to force iOS to pick up changes.
-const CACHE = 'mise-v1';
+const CACHE = 'mise-v2';
 
 const CORE = [
   './',
