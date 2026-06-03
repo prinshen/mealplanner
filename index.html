@@ -124,6 +124,9 @@
   .s-item:last-child{border-bottom:none;}
   .s-item .sn{flex:1; font-size:15.5px;}
   .s-item.done .sn{color:var(--muted); text-decoration:line-through;}
+  .s-amt{flex:none; color:var(--muted); font-size:14px; font-weight:600; white-space:nowrap;}
+  .s-item.done .s-amt{text-decoration:line-through;}
+  .amt{font-weight:600; color:var(--green);}
   .s-check{flex:none; width:24px; height:24px; border-radius:50%; border:2px solid var(--line); display:grid; place-items:center; color:#fff;}
   .s-item.done .s-check{background:var(--green); border-color:var(--green);}
 
@@ -275,13 +278,14 @@ function fileToScaledJpeg(file, maxDim=1400, q=0.82){
 /* ---------- API ---------- */
 const SYS = `Du udtrækker ingredienser OG fremgangsmåde fra en opskrift til en madplan-app. Svar altid på dansk.
 Regler:
-- Giv hver ingrediens et kort, generisk indkøbsnavn på dansk, i ental/grundform, uden mængder og uden tilberedningsord (f.eks. "kyllingelår", "olivenolie", "hvidløg", "gulerod"). Oversæt til dansk hvis opskriften er på et andet sprog.
-- Brug ental, ikke flertal (f.eks. "gulerod" ikke "gulerødder", "tomat" ikke "tomater").
+- Giv hver ingrediens et kort, generisk indkøbsnavn på dansk i ental/grundform i feltet "name", UDEN mængde og UDEN tilberedningsord i selve navnet (f.eks. name = "olivenolie", "hvidløg", "gulerod"). Oversæt til dansk hvis opskriften er på et andet sprog.
+- Skriv mængden i feltet "amount" på dansk, præcis som opskriften angiver den, f.eks. "10", "2 spsk", "500 g", "1 dåse". Konvertér IKKE enheder. Er der ingen mængde, så lad "amount" være "".
+- Brug ental i navnet, ikke flertal (f.eks. name = "gulerod", ikke "gulerødder").
 - Slå dubletter sammen.
 - Tildel hver ingrediens én kategori fra PRÆCIS denne liste (brug den engelske nøgle): produce, meat_fish, dairy_eggs, bakery, pantry, frozen, spices, other.
 - Skriv fremgangsmåden som korte, nummererede trin på dansk, omformuleret med dine egne ord (kopiér IKKE teksten ordret). Hold hvert trin kort og praktisk.
 Svar KUN med et JSON-objekt, ingen markdown og ingen kommentarer, præcis på denne form:
-{"title":"Rettens navn på dansk","ingredients":[{"name":"...","category":"..."}],"steps":["Trin 1","Trin 2"]}`;
+{"title":"Rettens navn på dansk","ingredients":[{"name":"...","amount":"...","category":"..."}],"steps":["Trin 1","Trin 2"]}`;
 
 async function callClaude(apiKey, body, beta){
   const headers = {
@@ -310,9 +314,10 @@ function parseResult(data){
   catch(_){ throw new Error("Opskriften kunne ikke læses korrekt. Prøv igen, eller tilføj manuelt."); }
   const ings = (obj.ingredients||[]).map(i=>{
     const name = String(i.name||"").trim();
+    const amount = String(i.amount||"").trim();
     let cat = String(i.category||"").trim();
     if(!VALID_CATS.has(cat)) cat = localCat(name);
-    return name ? {name, category:cat} : null;
+    return name ? {name, amount, category:cat} : null;
   }).filter(Boolean);
   if(!ings.length) throw new Error("Ingen ingredienser fundet. Prøv en anden kilde, eller tilføj manuelt.");
   const steps = Array.isArray(obj.steps) ? obj.steps.map(s=>String(s).trim()).filter(Boolean) : [];
@@ -436,6 +441,7 @@ function DayDetail({state, set, dayKey, flash}){
   const [busyMsg, setBusyMsg] = useState("");
   const [err, setErr] = useState("");
   const [newIng, setNewIng] = useState("");
+  const [newAmt, setNewAmt] = useState("");
   const [newCat, setNewCat] = useState("other");
   const fileRef = useRef(null);
   const apiKey = state.apiKey.trim();
@@ -470,10 +476,10 @@ function DayDetail({state, set, dayKey, flash}){
     const nm = newIng.trim(); if(!nm) return;
     setDay({status:"cooking", recipe:{
       title: recipe?recipe.title:"",
-      ingredients:[...(recipe?recipe.ingredients:[]), {name:nm, category:newCat}],
+      ingredients:[...(recipe?recipe.ingredients:[]), {name:nm, amount:newAmt.trim(), category:newCat}],
       steps: recipe?recipe.steps:[],
     }});
-    setNewIng(""); setNewCat("other");
+    setNewIng(""); setNewAmt(""); setNewCat("other");
   };
   const editTitle = (t)=> setDay({recipe:{...recipe, title:t}});
 
@@ -508,7 +514,7 @@ function DayDetail({state, set, dayKey, flash}){
               <div className="card" style={{marginBottom:14, overflow:"hidden"}}>
                 {recipe.ingredients.map((ing,i)=>(
                   <div className="ing" key={i}>
-                    <span className="nm ellip">{ing.name}</span>
+                    <span className="nm ellip">{ing.amount && <b className="amt">{ing.amount} </b>}{ing.name}</span>
                     <span className="cat">{CAT_LABEL[ing.category]||"Andet"}</span>
                     <button className="x" onClick={()=>removeIng(i)} aria-label="Fjern"><IcClose/></button>
                   </div>
@@ -552,6 +558,8 @@ function DayDetail({state, set, dayKey, flash}){
             <div className="card" style={{padding:"14px 14px 16px"}}>
               <label className="lbl">Tilføj en ingrediens</label>
               <div className="addrow">
+                <input className="field" style={{flex:"0 0 84px"}} placeholder="Mængde" value={newAmt}
+                  onChange={e=>setNewAmt(e.target.value)} onKeyDown={e=>{ if(e.key==="Enter") addIng(); }} />
                 <input className="field" placeholder="f.eks. hvidløg" value={newIng}
                   onChange={e=>{ setNewIng(e.target.value); setNewCat(localCat(e.target.value)); }}
                   onKeyDown={e=>{ if(e.key==="Enter") addIng(); }} />
@@ -647,8 +655,8 @@ function buildList(state){
     if(day.status==="cooking" && day.recipe){
       day.recipe.ingredients.forEach(ing=>{
         const k = keyOf(ing.name); if(!k) return;
-        if(!map.has(k)) map.set(k, {name:ing.name, category:ing.category||"other"});
-        else if(map.get(k).category==="other" && ing.category) map.get(k).category=ing.category;
+        if(!map.has(k)) map.set(k, {name:ing.name, category:ing.category||"other", amounts:ing.amount?[ing.amount]:[]});
+        else { const v=map.get(k); if(v.category==="other" && ing.category) v.category=ing.category; if(ing.amount) v.amounts.push(ing.amount); }
       });
     }
   });
@@ -665,9 +673,22 @@ function Shopping({state, set, flash}){
   const {groups, total} = useMemo(()=>buildList(state), [state.days, state.pantry]);
   const toggle = (k)=> set(s=>{ s.checked={...s.checked, [k]:!s.checked[k]}; return s; });
 
+  const allKeys = groups.flatMap(g=>g.items.map(i=>i.key));
+  const allChecked = allKeys.length>0 && allKeys.every(k=>state.checked[k]);
+  const toggleAll = ()=> set(s=>{
+    const c={...s.checked};
+    if(allChecked) allKeys.forEach(k=>{ delete c[k]; });
+    else allKeys.forEach(k=>{ c[k]=true; });
+    s.checked=c; return s;
+  });
+
   const copy = async ()=>{
     let txt = "INDKØBSLISTE\n\n";
-    groups.forEach(g=>{ txt += g.label+"\n"; g.items.forEach(i=> txt += "  - "+i.name+"\n"); txt += "\n"; });
+    groups.forEach(g=>{
+      txt += g.label+"\n";
+      g.items.forEach(i=> txt += "  - "+i.name+(i.amounts.length?" ("+i.amounts.join(" + ")+")":"")+"\n");
+      txt += "\n";
+    });
     txt = txt.trim();
     try{
       if(navigator.clipboard && navigator.clipboard.writeText){ await navigator.clipboard.writeText(txt); }
@@ -687,7 +708,10 @@ function Shopping({state, set, flash}){
     <div className="fade">
       <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", margin:"0 4px 14px"}}>
         <span className="count-pill">{total} {total===1?"vare":"varer"}</span>
-        <button className="btn primary sm" onClick={copy}><IcCopy/> Kopiér</button>
+        <div style={{display:"flex", gap:8}}>
+          <button className="btn ghost sm" onClick={toggleAll}>{allChecked?"Nulstil":"Ryd alt"}</button>
+          <button className="btn primary sm" onClick={copy}><IcCopy/> Kopiér</button>
+        </div>
       </div>
       {groups.map(g=>(
         <div key={g.cat} style={{marginBottom:16}}>
@@ -699,13 +723,14 @@ function Shopping({state, set, flash}){
                 <div className={"s-item"+(done?" done":"")} key={i.key} onClick={()=>toggle(i.key)}>
                   <span className="s-check">{done && <IcCheck/>}</span>
                   <span className="sn ellip">{i.name}</span>
+                  {i.amounts.length>0 && <span className="s-amt">{i.amounts.join(" + ")}</span>}
                 </div>
               );
             })}
           </div>
         </div>
       ))}
-      <p className="hint">Tryk på varer for at krydse dem af mens du handler. Kopiér lægger hele listen i udklipsholderen.</p>
+      <p className="hint">Tryk på varer for at krydse dem af mens du handler. "Ryd alt" krydser hele listen af.</p>
     </div>
   );
 }
