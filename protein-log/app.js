@@ -8,6 +8,7 @@
   let activeTab = 'today';
   let selectedDate = localDateKey(new Date());
   let touchStart = null;
+  let lockedScrollY = 0;
   const app = document.getElementById('app');
   const modalRoot = document.getElementById('modal-root');
   const toastRoot = document.getElementById('toast-root');
@@ -15,6 +16,11 @@
   init();
 
   function init() {
+    applyTheme();
+    const colorScheme = window.matchMedia('(prefers-color-scheme: dark)');
+    const syncSystemTheme = () => { if ((state.settings.theme || 'system') === 'system') applyTheme(); };
+    if (colorScheme.addEventListener) colorScheme.addEventListener('change', syncSystemTheme);
+    else if (colorScheme.addListener) colorScheme.addListener(syncSystemTheme);
     document.querySelectorAll('.tab-button').forEach(btn => btn.addEventListener('click', () => {
       activeTab = btn.dataset.tab;
       document.querySelectorAll('.tab-button').forEach(x => x.classList.toggle('active', x === btn));
@@ -39,7 +45,7 @@
     render();
   }
 
-  function defaultState() { return { settings: { proteinTarget: 160, calorieTarget: 2500, claudeApiKey: '' }, days: {}, savedMeals: [] }; }
+  function defaultState() { return { settings: { proteinTarget: 160, calorieTarget: 2500, theme: 'system', claudeApiKey: '' }, days: {}, savedMeals: [] }; }
   function loadState() {
     try {
       const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
@@ -66,7 +72,7 @@
     const quick = [...state.savedMeals].sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0)).slice(0, 4);
     app.innerHTML = `<section class="day-view">
       <div class="date-nav"><button class="date-button" id="prev-day" aria-label="Previous day">‹</button><div class="date-center"><label class="date-click-target" for="date-picker"><div class="date-label">${escapeHtml(isToday ? 'Today' : formatDate(selectedDate))}</div><div class="date-sub">${escapeHtml(formatLongDate(selectedDate))}</div></label><input class="date-picker" id="date-picker" type="date" max="${today}" value="${selectedDate}" /></div><button class="date-button" id="next-day" aria-label="Next day" ${canNext ? '' : 'disabled'}>›</button></div>
-      <div class="card progress-card"><div class="progress-ring" style="--progress:${Math.round(pct * 360)}deg"><div class="ring-content"><div class="ring-number">${roundMacro(totals.protein)} g</div><div class="ring-target">of ${roundMacro(proteinTarget)} g</div><div class="over-target">${proteinOver ? `+${roundMacro(proteinOver)} g` : ''}</div></div></div><div class="top-stats"><div><strong>${Math.round(totals.calories).toLocaleString()}</strong><span>kcal ${calorieOver ? `<em>+${Math.round(calorieOver)} kcal</em>` : ''}</span></div><div><strong>${roundMacro(totals.carbs)} g</strong><span>carbs</span></div></div><div class="average-stat"><strong>${roundMacro(average)} g</strong> daily protein average · last 7 days</div></div>
+      <div class="card progress-card"><div class="progress-ring" style="--progress:${Math.round(pct * 360)}deg"><div class="ring-content"><div class="ring-number">${roundMacro(Math.max(0, proteinTarget - totals.protein))} g</div><div class="ring-target">protein left</div><div class="over-target">${proteinOver ? `+${roundMacro(proteinOver)} g over` : ''}</div></div></div><div class="top-stats"><div><strong>${Math.round(totals.calories).toLocaleString()}</strong><span>kcal ${calorieOver ? `<em>+${Math.round(calorieOver)} kcal</em>` : ''}</span></div><div><strong>${roundMacro(totals.carbs)} g</strong><span>carbs</span></div></div><div class="average-stat"><strong>${roundMacro(average)} g</strong> daily protein average · last 7 days</div></div>
       <label class="card creatine-row"><input id="creatine" type="checkbox" ${day.creatine ? 'checked' : ''}/><span class="checkmark">✓</span><span><strong>Creatine</strong><small>Mark as taken today</small></span></label>
       ${MEAL_TYPES.map(type => renderMealSection(type, day)).join('')}
       ${quick.length ? `<div class="quick-wrap"><div class="section-kicker">Quick add</div><div class="quick-row">${quick.map(m => `<button class="quick-add" data-quick-id="${m.id}"><span class="quick-add-name">${escapeHtml(m.name)}</span><span class="quick-add-macro">${roundMacro(m.protein)} g protein · ${roundMacro(m.carbs)} g carbs · ${Math.round(m.calories)} kcal</span></button>`).join('')}</div></div>` : ''}
@@ -88,13 +94,14 @@
 
   function renderSaved() {
     const meals = [...state.savedMeals].sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0));
-    app.innerHTML = `<div class="page-head"><h1>Saved meals</h1><button class="primary-button" id="new-saved">+ New</button></div>${meals.length ? meals.map(m => `<div class="card saved-card"><div><strong>${escapeHtml(m.name)}</strong><small>${MEAL_LABELS[m.category]} · ${roundMacro(m.protein)} g protein · ${roundMacro(m.carbs)} g carbs · ${Math.round(m.calories)} kcal</small></div><button class="secondary-button" data-saved-edit="${m.id}">Edit</button></div>`).join('') : '<div class="card empty-card">No saved meals yet.</div>'}`;
+    app.innerHTML = `<div class="page-head"><h1>Saved meals</h1><button class="primary-button" id="new-saved">+ New</button></div>${meals.length ? meals.map(m => `<div class="card saved-card"><div class="saved-info"><div class="saved-title-row"><strong>${escapeHtml(m.name)}</strong><span class="saved-category">${MEAL_LABELS[m.category]}</span></div><small class="saved-nutrition">${roundMacro(m.protein)} g protein · ${roundMacro(m.carbs)} g carbs · ${Math.round(m.calories)} kcal</small></div><button class="secondary-button" data-saved-edit="${m.id}">Edit</button></div>`).join('') : '<div class="card empty-card">No saved meals yet.</div>'}`;
     document.getElementById('new-saved').onclick = () => openSavedModal();
     document.querySelectorAll('[data-saved-edit]').forEach(btn => btn.onclick = () => openSavedModal(btn.dataset.savedEdit));
   }
 
   function renderSettings() {
-    app.innerHTML = `<h1>Settings</h1><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="protein-target">Daily protein target</label><input id="protein-target" type="number" inputmode="decimal" min="1" step="1" value="${Number(state.settings.proteinTarget) || 160}" /></div><div class="settings-row"><label class="settings-label" for="calorie-target">Daily calorie goal</label><input id="calorie-target" type="number" inputmode="numeric" min="1" step="50" value="${Number(state.settings.calorieTarget) || 2500}" /><div class="settings-help">Calories stay secondary; the day view only highlights when you go over.</div></div></div><div class="section-kicker">Claude</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="claude-api-key">Claude API key</label><input id="claude-api-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…" value="${escapeAttr(state.settings.claudeApiKey || '')}" /><div class="settings-help">Stored only in this browser. Protein Log sends meals directly to Anthropic Claude.</div></div></div><div class="card settings-group"><div class="settings-row"><strong>Storage</strong><div class="settings-help">Meals, goals, creatine checks and your Claude key stay in Safari on this iPhone.</div></div></div>`;
+    app.innerHTML = `<h1>Settings</h1><div class="section-kicker">Appearance</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="theme-select">Theme</label><select id="theme-select"><option value="system" ${(state.settings.theme || 'system') === 'system' ? 'selected' : ''}>System default</option><option value="light" ${state.settings.theme === 'light' ? 'selected' : ''}>Light</option><option value="dark" ${state.settings.theme === 'dark' ? 'selected' : ''}>Dark</option></select></div></div><div class="section-kicker">Goals</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="protein-target">Daily protein target</label><input id="protein-target" type="number" inputmode="decimal" min="1" step="1" value="${Number(state.settings.proteinTarget) || 160}" /></div><div class="settings-row"><label class="settings-label" for="calorie-target">Daily calorie goal</label><input id="calorie-target" type="number" inputmode="numeric" min="1" step="50" value="${Number(state.settings.calorieTarget) || 2500}" /><div class="settings-help">Calories stay secondary; the day view only highlights when you go over.</div></div></div><div class="section-kicker">Claude</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="claude-api-key">Claude API key</label><input id="claude-api-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…" value="${escapeAttr(state.settings.claudeApiKey || '')}" /><div class="settings-help">Stored only in this browser. Protein Log sends meals directly to Anthropic Claude.</div></div></div><div class="card settings-group"><div class="settings-row"><strong>Storage</strong><div class="settings-help">Meals, goals, creatine checks, appearance and your Claude key stay in Safari on this iPhone.</div></div></div>`;
+    document.getElementById('theme-select').onchange = e => { state.settings.theme = e.target.value; applyTheme(); saveState(); toast('Theme saved'); };
     bindSetting('protein-target', 'proteinTarget', 160, 'Protein target saved');
     bindSetting('calorie-target', 'calorieTarget', 2500, 'Calorie goal saved');
     document.getElementById('claude-api-key').onchange = e => { state.settings.claudeApiKey = e.target.value.trim(); saveState(); toast('Claude API key saved locally'); };
@@ -102,6 +109,7 @@
   function bindSetting(id, key, fallback, message) { document.getElementById(id).onchange = e => { state.settings[key] = Math.max(1, Number(e.target.value) || fallback); saveState(); toast(message); }; }
 
   function openFoodModal(category, existing = null) {
+    lockPage();
     let analyzed = existing ? normalizeExisting(existing) : null;
     modalRoot.innerHTML = `<div class="modal-backdrop"><div class="sheet"><div class="sheet-handle"></div><div class="sheet-head"><h2>${existing ? 'Edit meal' : `Add ${MEAL_LABELS[category]}`}</h2><button class="close-button" id="close-sheet">×</button></div><div class="field"><label>What did you eat?</label><textarea id="food-text" placeholder="e.g. 100g oats with milk, 10 raisins and 5 almonds">${escapeHtml(existing?.description || '')}</textarea></div><button class="primary-button" id="analyze-food">Analyze</button><div id="food-error"></div><div id="food-result"></div></div></div>`;
     document.getElementById('close-sheet').onclick = closeModal;
@@ -124,6 +132,7 @@
 
   function openExistingEntry(id) { const entry = getDay(selectedDate).entries.find(e => e.id === id); if (entry) openFoodModal(entry.category, entry); }
   function openSavedModal(id = null) {
+    lockPage();
     const existing = id ? state.savedMeals.find(m => m.id === id) : null;
     let analyzed = existing ? normalizeExisting(existing) : null;
     renderBody();
@@ -179,7 +188,9 @@
   function num(v) { const n = Number(v); return Number.isFinite(n) ? n : 0; }
   function uid() { return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`; }
   function clone(v) { return JSON.parse(JSON.stringify(v)); }
-  function closeModal() { modalRoot.innerHTML = ''; }
+  function applyTheme() { const choice = state.settings.theme || 'system'; const resolved = choice === 'system' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : choice; document.documentElement.dataset.theme = resolved; const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = resolved === 'dark' ? '#111312' : '#f5f5f7'; }
+  function lockPage() { if (document.body.classList.contains('modal-open')) return; lockedScrollY = window.scrollY; document.body.style.top = `-${lockedScrollY}px`; document.body.classList.add('modal-open'); }
+  function closeModal() { modalRoot.innerHTML = ''; document.body.classList.remove('modal-open'); document.body.style.top = ''; window.scrollTo(0, lockedScrollY); }
   function showInlineError(id, message) { const el = document.getElementById(id); if (el) el.innerHTML = `<div class="inline-error">${escapeHtml(message)}</div>`; }
   function toast(message) { toastRoot.textContent = message; toastRoot.classList.add('show'); setTimeout(() => toastRoot.classList.remove('show'), 1600); }
   function roundMacro(v) { const n = num(v); return Math.abs(n - Math.round(n)) < 0.05 ? Math.round(n) : n.toFixed(1); }
