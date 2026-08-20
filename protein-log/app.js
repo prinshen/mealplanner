@@ -7,6 +7,7 @@
   const state = loadState();
   let activeTab = 'today';
   let selectedDate = localDateKey(new Date());
+  let selectedWeekStart = weekStartKey(selectedDate);
   let touchStart = null;
   let lockedScrollY = 0;
   const app = document.getElementById('app');
@@ -55,7 +56,7 @@
     } catch { return defaultState(); }
   }
   function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
-  function render() { if (activeTab === 'today') renderToday(); else if (activeTab === 'saved') renderSaved(); else renderSettings(); }
+  function render() { if (activeTab === 'today') renderToday(); else if (activeTab === 'saved') renderSaved(); else if (activeTab === 'review') renderWeekly(); else renderSettings(); }
 
   function renderToday() {
     const day = getDay(selectedDate);
@@ -71,11 +72,15 @@
     const isToday = selectedDate === today;
     const canNext = selectedDate < today;
     const average = sevenDayProteinAverage(selectedDate);
+    const weightTrend = rollingWeightSummary(selectedDate);
+    const activities = day.activities || {};
     const quick = [...state.savedMeals].sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0));
     app.innerHTML = `<section class="day-view">
       <div class="date-nav"><button class="date-button" id="prev-day" aria-label="Previous day">‹</button><div class="date-center"><label class="date-click-target" for="date-picker"><div class="date-label">${escapeHtml(isToday ? 'Today' : formatDate(selectedDate))}</div><div class="date-sub">${escapeHtml(formatLongDate(selectedDate))}</div></label><input class="date-picker" id="date-picker" type="date" max="${today}" value="${selectedDate}" /></div><button class="date-button" id="next-day" aria-label="Next day" ${canNext ? '' : 'disabled'}>›</button></div>
-      <div class="card progress-card"><div class="progress-ring" style="--progress:${Math.round(pct * 360)}deg"><div class="ring-content"><div class="ring-consumed">${roundMacro(totals.protein)} g eaten</div><div class="ring-number">${roundMacro(Math.max(0, proteinTarget - totals.protein))} g</div><div class="ring-target">protein left</div><div class="over-target">${proteinOver ? `+${roundMacro(proteinOver)} g over` : ''}</div></div></div><div class="top-stats"><div><strong>${Math.round(totals.calories).toLocaleString()}</strong><span>kcal ${calorieOver ? `<em>+${Math.round(calorieOver)} kcal</em>` : ''}</span></div><div><strong>${roundMacro(totals.carbs)} g</strong><span>carbs ${carbOver ? `<em>+${roundMacro(carbOver)} g</em>` : ''}</span></div></div><div class="average-stat"><strong>${roundMacro(average)} g</strong> daily protein average · last 7 days</div></div>
+      <div class="card progress-card"><div class="progress-ring" style="--progress:${Math.round(pct * 360)}deg"><div class="ring-content"><div class="ring-consumed">${roundMacro(totals.protein)} g eaten</div><div class="ring-number">${roundMacro(Math.max(0, proteinTarget - totals.protein))} g</div><div class="ring-target">protein left</div><div class="over-target">${proteinOver ? `+${roundMacro(proteinOver)} g over` : ''}</div></div></div><div class="top-stats"><div><strong>${Math.round(totals.calories).toLocaleString()}</strong><span>kcal ${calorieOver ? `<em>+${Math.round(calorieOver)} kcal</em>` : ''}</span></div><div><strong>${roundMacro(totals.carbs)} g</strong><span>carbs ${carbOver ? `<em>+${roundMacro(carbOver)} g</em>` : ''}</span></div></div><div class="average-stat"><strong>${roundMacro(average)} g</strong> daily protein average · last 7 days</div><div class="weight-average">${renderWeightAverage(weightTrend)}</div></div>
+      <div class="card weight-card"><div><strong>Morning body weight</strong><small>${hasWeight(day) ? `${formatWeight(day.weightKg)} kg logged for this day` : 'Optional daily weigh-in'}</small></div><div class="weight-controls"><div class="weight-input"><input id="morning-weight" aria-label="Morning body weight in kilograms" type="number" inputmode="decimal" min="1" step="0.1" placeholder="82.7" value="${hasWeight(day) ? escapeAttr(day.weightKg) : ''}" /><span>kg</span></div><button class="secondary-button" id="save-weight">Save</button>${hasWeight(day) ? '<button class="weight-delete" id="delete-weight" aria-label="Delete morning weight">×</button>' : ''}</div></div>
       <label class="card creatine-row"><input id="creatine" type="checkbox" ${day.creatine ? 'checked' : ''}/><span class="checkmark">✓</span><span><strong>Creatine</strong><small>Mark as taken today</small></span></label>
+      <div class="card activity-card"><div class="activity-head"><strong>Activity</strong><small>Optional markers for this day</small></div><div class="activity-grid">${activityToggle('strength', 'Strength workout', activities.strength)}${activityToggle('run', 'Run', activities.run)}${activityToggle('longBike', 'Longer bike ride', activities.longBike)}</div></div>
       ${MEAL_TYPES.map(type => renderMealSection(type, day)).join('')}
       ${quick.length ? `<div class="quick-wrap"><div class="section-kicker">Quick add</div><div class="quick-row">${quick.map(m => `<button class="quick-add" data-quick-id="${m.id}"><span class="quick-add-name">${escapeHtml(m.name)}</span><span class="quick-add-macro">${roundMacro(m.protein)} g protein · ${roundMacro(m.carbs)} g carbs · ${Math.round(m.calories)} kcal</span></button>`).join('')}</div></div>` : ''}
     </section>`;
@@ -83,6 +88,9 @@
     document.getElementById('next-day').onclick = () => { if (canNext) { selectedDate = shiftDate(selectedDate, 1); renderToday(); } };
     document.getElementById('date-picker').onchange = e => { if (e.target.value) { selectedDate = e.target.value; renderToday(); } };
     document.getElementById('creatine').onchange = e => { day.creatine = e.target.checked; saveState(); };
+    document.getElementById('save-weight').onclick = () => { const value = Number(document.getElementById('morning-weight').value); if (!Number.isFinite(value) || value <= 0) return toast('Enter a valid weight in kg'); day.weightKg = Math.round(value * 10) / 10; saveState(); renderToday(); toast('Morning weight saved'); };
+    const deleteWeight = document.getElementById('delete-weight'); if (deleteWeight) deleteWeight.onclick = () => { delete day.weightKg; saveState(); renderToday(); toast('Weight entry deleted'); };
+    document.querySelectorAll('[data-activity]').forEach(input => input.onchange = () => { day.activities = { ...(day.activities || {}), [input.dataset.activity]: input.checked }; saveState(); });
     document.querySelectorAll('[data-add-meal]').forEach(btn => btn.onclick = () => openFoodModal(btn.dataset.addMeal));
     document.querySelectorAll('[data-entry-id]').forEach(btn => btn.onclick = () => openExistingEntry(btn.dataset.entryId));
     document.querySelectorAll('[data-quick-id]').forEach(btn => btn.onclick = () => quickAdd(btn.dataset.quickId));
@@ -92,6 +100,125 @@
     const entries = day.entries.filter(e => e.category === type);
     const protein = sum(entries, 'protein'), carbs = sum(entries, 'carbs');
     return `<div class="card meal-card"><div class="meal-header"><div><div class="meal-title">${MEAL_LABELS[type]}</div><div class="meal-subtitle">${entries.length ? `${roundMacro(protein)} g protein · ${roundMacro(carbs)} g carbs` : 'No food added'}</div></div><button class="add-button" data-add-meal="${type}">+ Add</button></div>${entries.length ? entries.map(e => `<button class="meal-entry" data-entry-id="${e.id}"><span><strong>${escapeHtml(e.name || e.description || 'Meal')}</strong>${e.source === 'saved' ? '<small>Saved meal</small>' : ''}</span><span class="entry-macros"><strong>${roundMacro(e.protein)} g protein</strong><small>${roundMacro(e.carbs)} g carbs · ${Math.round(e.calories)} kcal</small></span></button>`).join('') : '<div class="meal-empty">Nothing here yet.</div>'}</div>`;
+  }
+
+  function activityToggle(key, label, checked) {
+    return `<label class="activity-toggle"><input type="checkbox" data-activity="${key}" ${checked ? 'checked' : ''}/><span class="activity-check">✓</span><span>${label}</span></label>`;
+  }
+
+  function renderWeekly() {
+    const report = buildWeeklyReport(selectedWeekStart);
+    const s = report.summary;
+    app.innerHTML = `<section class="weekly-view">
+      <div class="page-head"><div><h1>Weekly review</h1><div class="date-sub">${escapeHtml(report.dateRange)}</div></div></div>
+      <div class="week-nav"><button class="date-button" id="prev-week" aria-label="Previous week">‹</button><label class="week-picker-label" for="week-picker"><strong>${escapeHtml(formatWeekLabel(selectedWeekStart))}</strong><span>Select week</span></label><input id="week-picker" class="week-picker" type="date" value="${selectedWeekStart}"/><button class="date-button" id="next-week" aria-label="Next week">›</button></div>
+      <div class="weekly-grid">
+        <div class="card metric-card primary-metric"><span>Average morning weight</span><strong>${s.averageWeightKg == null ? '—' : `${formatWeight(s.averageWeightKg)} kg`}</strong><small>${s.weightChangeKg == null ? `${s.weightEntries} weigh-in${s.weightEntries === 1 ? '' : 's'}` : `${signedWeight(s.weightChangeKg)} kg vs previous week`}</small></div>
+        <div class="card metric-card"><span>Average calories</span><strong>${Math.round(s.averageCalories).toLocaleString()}</strong><small>kcal / day</small></div>
+        <div class="card metric-card"><span>Average protein</span><strong>${roundMacro(s.averageProteinG)} g</strong><small>per day</small></div>
+        <div class="card metric-card"><span>Average carbs</span><strong>${roundMacro(s.averageCarbsG)} g</strong><small>per day</small></div>
+        <div class="card metric-card"><span>Workouts</span><strong>${s.strengthWorkouts + s.runs + s.longBikeRides}</strong><small>${s.strengthWorkouts} strength · ${s.runs} run · ${s.longBikeRides} bike</small></div>
+        <div class="card metric-card"><span>Creatine</span><strong>${s.creatineDays}/7</strong><small>days taken</small></div>
+      </div>
+      <div class="card trend-card"><div class="trend-head"><strong>Weight trend</strong><small>Morning weigh-ins · weekly changes matter more than daily noise</small></div>${weightTrendSvg(report.days)}</div>
+      <div class="section-kicker">Daily overview</div>
+      <div class="card daily-review">${report.days.map(d => `<div class="daily-review-row"><div><strong>${escapeHtml(formatShortDay(d.date))}</strong><small>${d.weightKg == null ? 'No weigh-in' : `${formatWeight(d.weightKg)} kg`}</small></div><div class="daily-review-macros"><strong>${Math.round(d.calories)} kcal</strong><small>${roundMacro(d.proteinG)} g protein · ${roundMacro(d.carbsG)} g carbs</small></div></div>`).join('')}</div>
+      <div class="section-kicker">Export this week</div>
+      <div class="card export-card"><div><strong>Full nutrition + weight report</strong><small>Includes daily data, activities, creatine, meals and ingredient-level detail.</small></div><div class="export-actions"><button class="primary-button" id="export-csv">Export CSV</button><button class="secondary-button" id="export-json">Export JSON</button></div></div>
+    </section>`;
+    document.getElementById('prev-week').onclick = () => { selectedWeekStart = shiftDate(selectedWeekStart, -7); renderWeekly(); };
+    document.getElementById('next-week').onclick = () => { selectedWeekStart = shiftDate(selectedWeekStart, 7); renderWeekly(); };
+    document.getElementById('week-picker').onchange = e => { if (e.target.value) { selectedWeekStart = weekStartKey(e.target.value); renderWeekly(); } };
+    document.getElementById('export-csv').onclick = () => exportWeeklyReport(report, 'csv');
+    document.getElementById('export-json').onclick = () => exportWeeklyReport(report, 'json');
+  }
+
+  function buildWeeklyReport(startDate) {
+    const dates = weekDates(startDate);
+    const days = dates.map(date => {
+      const source = state.days[date] || { date, entries: [] };
+      const totals = dayTotals(source);
+      const activities = source.activities || {};
+      return { date, weightKg: hasWeight(source) ? Number(source.weightKg) : null, calories: totals.calories, proteinG: totals.protein, carbsG: totals.carbs, creatine: Boolean(source.creatine), strengthWorkout: Boolean(activities.strength), run: Boolean(activities.run), longBikeRide: Boolean(activities.longBike), meals: (source.entries || []).map(entry => ({ id: entry.id, section: MEAL_LABELS[entry.category] || entry.category || '', name: entry.name || entry.description || 'Meal', description: entry.description || '', calories: num(entry.calories), proteinG: num(entry.protein), carbsG: num(entry.carbs), estimated: entry.source === 'ai', ingredients: clone(entry.ingredients || []) })) };
+    });
+    const weights = days.map(d => d.weightKg).filter(v => v != null);
+    const previousWeights = weekDates(shiftDate(startDate, -7)).map(date => state.days[date]).filter(hasWeight).map(day => Number(day.weightKg));
+    const averageWeightKg = averageNumbers(weights);
+    const previousAverageWeightKg = averageNumbers(previousWeights);
+    const summary = {
+      averageWeightKg,
+      previousAverageWeightKg,
+      weightChangeKg: averageWeightKg == null || previousAverageWeightKg == null ? null : averageWeightKg - previousAverageWeightKg,
+      weightEntries: weights.length,
+      averageCalories: averageNumbers(days.map(d => d.calories)) || 0,
+      averageProteinG: averageNumbers(days.map(d => d.proteinG)) || 0,
+      averageCarbsG: averageNumbers(days.map(d => d.carbsG)) || 0,
+      strengthWorkouts: days.filter(d => d.strengthWorkout).length,
+      runs: days.filter(d => d.run).length,
+      longBikeRides: days.filter(d => d.longBikeRide).length,
+      creatineDays: days.filter(d => d.creatine).length
+    };
+    return { weekStart: startDate, weekEnd: dates[6], dateRange: `${formatLongDate(startDate)} – ${formatLongDate(dates[6])}`, summary, days };
+  }
+
+  function rollingWeightSummary(endDate) {
+    const current = Array.from({ length: 7 }, (_, i) => state.days[shiftDate(endDate, -i)]).filter(hasWeight).map(day => Number(day.weightKg));
+    const previous = Array.from({ length: 7 }, (_, i) => state.days[shiftDate(endDate, -7 - i)]).filter(hasWeight).map(day => Number(day.weightKg));
+    const averageKg = averageNumbers(current), previousAverageKg = averageNumbers(previous);
+    return { averageKg, previousAverageKg, count: current.length, changeKg: averageKg == null || previousAverageKg == null ? null : averageKg - previousAverageKg };
+  }
+
+  function renderWeightAverage(trend) {
+    if (trend.averageKg == null) return 'Log morning weight to see a 7-day average';
+    const comparison = trend.changeKg == null ? `${trend.count} weigh-in${trend.count === 1 ? '' : 's'}` : `${signedWeight(trend.changeKg)} kg vs previous week`;
+    return `<strong>${formatWeight(trend.averageKg)} kg</strong> 7-day weight average · ${comparison}`;
+  }
+
+  function weightTrendSvg(days) {
+    const values = days.map((d, i) => d.weightKg == null ? null : { i, value: d.weightKg }).filter(Boolean);
+    if (!values.length) return '<div class="trend-empty">No morning weigh-ins logged this week.</div>';
+    const min = Math.min(...values.map(p => p.value)), max = Math.max(...values.map(p => p.value)), range = max - min;
+    const points = values.map(p => ({ ...p, x: 12 + p.i * 46, y: range ? 48 - ((p.value - min) / range) * 34 : 31 }));
+    const line = points.map(p => `${p.x},${p.y}`).join(' ');
+    return `<svg class="weight-chart" viewBox="0 0 300 72" role="img" aria-label="Weight trend for the selected week"><polyline class="trend-line" points="${line}"/>${points.map(p => `<circle class="trend-dot" cx="${p.x}" cy="${p.y}" r="3"><title>${formatWeight(p.value)} kg</title></circle>`).join('')}${days.map((d, i) => `<text x="${12 + i * 46}" y="68">${escapeHtml(formatWeekdayLetter(d.date))}</text>`).join('')}</svg>`;
+  }
+
+  async function exportWeeklyReport(report, format) {
+    try {
+      const isCsv = format === 'csv';
+      const content = isCsv ? weeklyCsv(report) : JSON.stringify(report, null, 2);
+      const filename = `protein-log-${report.weekStart}-to-${report.weekEnd}.${format}`;
+      await shareOrDownload(content, isCsv ? 'text/csv;charset=utf-8' : 'application/json', filename);
+    } catch { toast('Could not export this report'); }
+  }
+
+  function weeklyCsv(report) {
+    const columns = ['week_start','week_end','weekly_average_weight_kg','weight_change_vs_previous_week_kg','average_daily_calories','average_daily_protein_g','average_daily_carbs_g','weekly_strength_workouts','weekly_runs','weekly_long_bike_rides','creatine_days_out_of_7','date','morning_weight_kg','daily_calories','daily_protein_g','daily_carbs_g','creatine','strength_workout','run','long_bike_ride','meal_section','meal_name','food_name','quantity','quantity_unit','quantity_g','item_calories','item_protein_g','item_carbs_g','meal_calories','meal_protein_g','meal_carbs_g','estimated','meal_description'];
+    const rows = [];
+    const weekly = { week_start: report.weekStart, week_end: report.weekEnd, weekly_average_weight_kg: report.summary.averageWeightKg == null ? '' : roundExport(report.summary.averageWeightKg), weight_change_vs_previous_week_kg: report.summary.weightChangeKg == null ? '' : roundExport(report.summary.weightChangeKg), average_daily_calories: roundExport(report.summary.averageCalories), average_daily_protein_g: roundExport(report.summary.averageProteinG), average_daily_carbs_g: roundExport(report.summary.averageCarbsG), weekly_strength_workouts: report.summary.strengthWorkouts, weekly_runs: report.summary.runs, weekly_long_bike_rides: report.summary.longBikeRides, creatine_days_out_of_7: report.summary.creatineDays };
+    report.days.forEach(day => {
+      const daily = { ...weekly, date: day.date, morning_weight_kg: day.weightKg ?? '', daily_calories: roundExport(day.calories), daily_protein_g: roundExport(day.proteinG), daily_carbs_g: roundExport(day.carbsG), creatine: yesNo(day.creatine), strength_workout: yesNo(day.strengthWorkout), run: yesNo(day.run), long_bike_ride: yesNo(day.longBikeRide) };
+      if (!day.meals.length) { rows.push(daily); return; }
+      day.meals.forEach(meal => {
+        const mealBase = { ...daily, meal_section: meal.section, meal_name: meal.name, meal_calories: roundExport(meal.calories), meal_protein_g: roundExport(meal.proteinG), meal_carbs_g: roundExport(meal.carbsG), estimated: yesNo(meal.estimated), meal_description: meal.description };
+        if (!meal.ingredients.length) { rows.push({ ...mealBase, food_name: meal.name, item_calories: roundExport(meal.calories), item_protein_g: roundExport(meal.proteinG), item_carbs_g: roundExport(meal.carbsG) }); return; }
+        meal.ingredients.forEach(item => {
+          const amount = num(item.amount), unit = String(item.unit || ''), factor = amount / 100;
+          rows.push({ ...mealBase, food_name: item.name || 'Ingredient', quantity: item.amount ?? '', quantity_unit: unit, quantity_g: unit.toLowerCase() === 'g' ? amount : '', item_calories: Number.isFinite(Number(item.caloriesPer100g)) ? roundExport(factor * Number(item.caloriesPer100g)) : '', item_protein_g: Number.isFinite(Number(item.proteinPer100g)) ? roundExport(factor * Number(item.proteinPer100g)) : '', item_carbs_g: Number.isFinite(Number(item.carbsPer100g)) ? roundExport(factor * Number(item.carbsPer100g)) : '', estimated: yesNo(Boolean(item.estimated) || meal.estimated) });
+        });
+      });
+    });
+    return [columns.join(','), ...rows.map(row => columns.map(column => csvCell(row[column] ?? '')).join(','))].join('\n');
+  }
+
+  async function shareOrDownload(content, mimeType, filename) {
+    const file = typeof File !== 'undefined' ? new File([content], filename, { type: mimeType }) : null;
+    if (file && navigator.share && navigator.canShare?.({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: 'Protein Log weekly report' }); return; }
+      catch (err) { if (err?.name === 'AbortError') return; }
+    }
+    const url = URL.createObjectURL(new Blob([content], { type: mimeType }));
+    const link = document.createElement('a'); link.href = url; link.download = filename; document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   function renderSaved() {
@@ -192,6 +319,18 @@
   function ingredientRowHtml(ing, i) { return `<div class="ingredient-row"><input aria-label="Ingredient" data-ing-index="${i}" data-ing-field="name" value="${escapeAttr(ing.name || '')}" /><div class="amount-input"><input aria-label="Amount in grams" data-ing-index="${i}" data-ing-field="amount" inputmode="decimal" value="${escapeAttr(ing.amount ?? '')}" /><span>g</span></div><input aria-label="Protein per 100 grams" data-ing-index="${i}" data-ing-field="proteinPer100g" inputmode="decimal" value="${escapeAttr(ing.proteinPer100g ?? 0)}" /><input aria-label="Carbs per 100 grams" data-ing-index="${i}" data-ing-field="carbsPer100g" inputmode="decimal" value="${escapeAttr(ing.carbsPer100g ?? 0)}" /></div>`; }
   function readIngredientRows() { return [...document.querySelectorAll('.ingredient-row')].map(row => { const old = {}; row.querySelectorAll('input').forEach(input => { const field = input.dataset.ingField; old[field] = field === 'name' ? input.value.trim() : num(input.value); }); const idx = Number(row.querySelector('input').dataset.ingIndex); const source = modalRoot._ingredients?.[idx] || {}; return { ...source, ...old, unit: 'g', estimated: source.estimated || false }; }); }
   function mealOptions(selected) { return MEAL_TYPES.map(t => `<option value="${t}" ${t === selected ? 'selected' : ''}>${MEAL_LABELS[t]}</option>`).join(''); }
+  function hasWeight(day) { return Boolean(day) && Number.isFinite(Number(day.weightKg)) && Number(day.weightKg) > 0; }
+  function averageNumbers(values) { const valid = values.map(Number).filter(Number.isFinite); return valid.length ? valid.reduce((sum, value) => sum + value, 0) / valid.length : null; }
+  function weekStartKey(key) { const date = parseLocalDate(key), weekday = date.getDay() || 7; date.setDate(date.getDate() - weekday + 1); return localDateKey(date); }
+  function weekDates(startDate) { return Array.from({ length: 7 }, (_, i) => shiftDate(startDate, i)); }
+  function formatWeight(value) { return Number(value).toFixed(1); }
+  function signedWeight(value) { const rounded = Number(value).toFixed(1); return Number(value) > 0 ? `+${rounded}` : rounded; }
+  function formatShortDay(key) { return new Intl.DateTimeFormat('en', { weekday: 'short', day: 'numeric', month: 'short' }).format(parseLocalDate(key)); }
+  function formatWeekdayLetter(key) { return new Intl.DateTimeFormat('en', { weekday: 'narrow' }).format(parseLocalDate(key)); }
+  function formatWeekLabel(key) { const date = parseLocalDate(key), target = new Date(date.valueOf()); target.setDate(target.getDate() + 3); const firstThursday = new Date(target.getFullYear(), 0, 4, 12); firstThursday.setDate(firstThursday.getDate() + (4 - (firstThursday.getDay() || 7))); const week = 1 + Math.round((target - firstThursday) / 604800000); return `Week ${week} · ${formatShortDay(key)}`; }
+  function roundExport(value) { return Math.round(num(value) * 100) / 100; }
+  function yesNo(value) { return value ? 'yes' : 'no'; }
+  function csvCell(value) { const text = String(value ?? ''); return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text; }
   function getDay(date) { if (!state.days[date]) state.days[date] = { date, entries: [] }; if (!Array.isArray(state.days[date].entries)) state.days[date].entries = []; return state.days[date]; }
   function dayTotals(day) { return { protein: sum(day.entries, 'protein'), carbs: sum(day.entries, 'carbs'), calories: sum(day.entries, 'calories') }; }
   function sevenDayProteinAverage(endDate) { let total = 0; for (let i = 0; i < 7; i++) total += dayTotals(state.days[shiftDate(endDate, -i)] || { entries: [] }).protein; return total / 7; }
