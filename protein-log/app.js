@@ -244,6 +244,8 @@
     lockPage();
     let analyzed = existing ? normalizeExisting(existing) : null;
     let mealEstimated = Boolean(existing?.estimated);
+    const linkedSavedMeal = existing?.savedMealId ? state.savedMeals.find(meal => meal.id === existing.savedMealId) : null;
+    let saveToSavedMeals = Boolean(linkedSavedMeal);
     modalRoot.innerHTML = `<div class="modal-backdrop"><div class="sheet"><div class="sheet-handle"></div><div class="sheet-head"><h2>${existing ? 'Edit meal' : `Add ${MEAL_LABELS[category]}`}</h2><button class="close-button" id="close-sheet">×</button></div><div class="field"><label>What did you eat?</label><textarea id="food-text" placeholder="e.g. 100g oats with milk, 10 raisins and 5 almonds">${escapeHtml(existing?.description || '')}</textarea></div><button class="primary-button" id="analyze-food">Analyze</button><div id="food-error"></div><div id="food-result"></div></div></div>`;
     document.getElementById('close-sheet').onclick = closeModal;
     if (analyzed) renderFoodResult();
@@ -251,16 +253,33 @@
     function renderFoodResult() {
       const root = document.getElementById('food-result');
       modalRoot._ingredients = analyzed.ingredients;
-      root.innerHTML = `<div class="card result-summary">${mealSummaryHtml(analyzed)}</div>${analyzed.ingredients.length ? `<div class="section-kicker">Ingredients</div><div class="ingredient-head"><span>Ingredient</span><span>Amount</span></div><div class="ingredient-list">${analyzed.ingredients.map((ing, i) => ingredientRowHtml(ing, i)).join('')}</div><div class="settings-help">Edit grams or nutrition per 100 g. Calories and all macros update automatically.</div>` : ''}${estimatedToggleHtml(mealEstimated)}<div class="modal-actions">${existing ? '<button class="secondary-button danger" id="delete-entry">Delete</button>' : '<button class="secondary-button" id="cancel-entry">Cancel</button>'}<button class="primary-button" id="save-entry">${existing ? 'Save meal' : 'Add meal'}</button></div>`;
+      root.innerHTML = `<div class="card result-summary">${mealSummaryHtml(analyzed)}</div>${analyzed.ingredients.length ? `<div class="section-kicker">Ingredients</div><div class="ingredient-head"><span>Ingredient</span><span>Amount</span></div><div class="ingredient-list">${analyzed.ingredients.map((ing, i) => ingredientRowHtml(ing, i)).join('')}</div><div class="settings-help">Edit grams or nutrition per 100 g. Calories and all macros update automatically.</div>` : ''}${estimatedToggleHtml(mealEstimated)}${saveToSavedToggleHtml(saveToSavedMeals, Boolean(linkedSavedMeal))}<div class="modal-actions">${existing ? '<button class="secondary-button danger" id="delete-entry">Delete</button>' : '<button class="secondary-button" id="cancel-entry">Cancel</button>'}<button class="primary-button" id="save-entry">${existing ? 'Save meal' : 'Add meal'}</button></div>`;
       root.querySelectorAll('.ingredient-row input').forEach(input => input.addEventListener('input', () => {
         analyzed.ingredients = readIngredientRows();
         analyzed = calculateFromIngredients(analyzed);
         root.querySelector('.result-summary').innerHTML = mealSummaryHtml(analyzed);
       }));
       document.getElementById('meal-estimated').onchange = e => { mealEstimated = e.target.checked; };
+      document.getElementById('save-to-saved').onchange = e => { saveToSavedMeals = e.target.checked; };
       const cancel = document.getElementById('cancel-entry'); if (cancel) cancel.onclick = closeModal;
       const del = document.getElementById('delete-entry'); if (del) del.onclick = () => { const d = getDay(selectedDate); d.entries = d.entries.filter(e => e.id !== existing.id); saveState(); closeModal(); renderToday(); };
-      document.getElementById('save-entry').onclick = () => { const d = getDay(selectedDate); const entry = { id: existing?.id || uid(), category, description: document.getElementById('food-text').value.trim(), name: analyzed.name || 'Meal', protein: num(analyzed.protein), carbs: num(analyzed.carbs), fat: num(analyzed.fat), calories: num(analyzed.calories), estimated: document.getElementById('meal-estimated').checked, ingredients: analyzed.ingredients || [], source: existing?.source || 'ai' }; const idx = d.entries.findIndex(e => e.id === entry.id); if (idx >= 0) d.entries[idx] = entry; else d.entries.push(entry); saveState(); closeModal(); renderToday(); };
+      document.getElementById('save-entry').onclick = () => {
+        const d = getDay(selectedDate);
+        const description = document.getElementById('food-text').value.trim();
+        const entry = { id: existing?.id || uid(), category, description, name: analyzed.name || 'Meal', protein: num(analyzed.protein), carbs: num(analyzed.carbs), fat: num(analyzed.fat), calories: num(analyzed.calories), estimated: document.getElementById('meal-estimated').checked, ingredients: clone(analyzed.ingredients || []), source: existing?.source || 'ai', ...(existing?.savedMealId ? { savedMealId: existing.savedMealId } : {}) };
+        if (document.getElementById('save-to-saved').checked) {
+          const currentSaved = entry.savedMealId ? state.savedMeals.find(meal => meal.id === entry.savedMealId) : null;
+          const savedMeal = { id: currentSaved?.id || uid(), name: entry.name, description, category, protein: entry.protein, carbs: entry.carbs, fat: entry.fat, calories: entry.calories, estimated: entry.estimated, ingredients: clone(entry.ingredients), usageCount: currentSaved?.usageCount || 0 };
+          const savedIndex = state.savedMeals.findIndex(meal => meal.id === savedMeal.id);
+          if (savedIndex >= 0) state.savedMeals[savedIndex] = savedMeal; else state.savedMeals.push(savedMeal);
+          entry.savedMealId = savedMeal.id;
+          entry.source = 'saved';
+        }
+        const idx = d.entries.findIndex(e => e.id === entry.id);
+        if (idx >= 0) d.entries[idx] = entry; else d.entries.push(entry);
+        saveState(); closeModal(); renderToday();
+        toast(saveToSavedMeals ? (existing ? 'Meal and saved copy updated' : 'Meal added and saved') : (existing ? 'Meal updated' : 'Meal added'));
+      };
     }
   }
 
@@ -326,6 +345,7 @@
   function ingredientRowHtml(ing, i) { return `<div class="ingredient-row"><input aria-label="Ingredient" data-ing-index="${i}" data-ing-field="name" value="${escapeAttr(ing.name || '')}" /><div class="amount-input"><input aria-label="Amount in grams" data-ing-index="${i}" data-ing-field="amount" inputmode="decimal" value="${escapeAttr(ing.amount ?? '')}" /><span>g</span></div><div class="ingredient-nutrients"><label><span>kcal /100g</span><input aria-label="Calories per 100 grams" data-ing-index="${i}" data-ing-field="caloriesPer100g" inputmode="decimal" value="${escapeAttr(ing.caloriesPer100g ?? 0)}" /></label><label><span>Protein /100g</span><input aria-label="Protein per 100 grams" data-ing-index="${i}" data-ing-field="proteinPer100g" inputmode="decimal" value="${escapeAttr(ing.proteinPer100g ?? 0)}" /></label><label><span>Carbs /100g</span><input aria-label="Carbs per 100 grams" data-ing-index="${i}" data-ing-field="carbsPer100g" inputmode="decimal" value="${escapeAttr(ing.carbsPer100g ?? 0)}" /></label><label><span>Fat /100g</span><input aria-label="Fat per 100 grams" data-ing-index="${i}" data-ing-field="fatPer100g" inputmode="decimal" value="${escapeAttr(ing.fatPer100g ?? 0)}" /></label></div></div>`; }
   function mealSummaryHtml(meal) { return `<strong>~${roundMacro(meal.protein)} g protein</strong><span>~${roundMacro(meal.carbs)} g carbs · ~${roundMacro(meal.fat)} g fat · ~${Math.round(num(meal.calories))} kcal</span>`; }
   function estimatedToggleHtml(checked) { return `<label class="estimated-toggle"><input id="meal-estimated" type="checkbox" ${checked ? 'checked' : ''}/><span class="mini-check">✓</span><span><strong>Estimated</strong><small>Mark uncertain meals such as canteen food</small></span></label>`; }
+  function saveToSavedToggleHtml(checked, updatesExisting) { return `<label class="estimated-toggle"><input id="save-to-saved" type="checkbox" ${checked ? 'checked' : ''}/><span class="mini-check">✓</span><span><strong>${updatesExisting ? 'Update Saved Meal' : 'Save to Saved Meals'}</strong><small>${updatesExisting ? 'Keep the reusable saved copy in sync' : 'Add this meal as a reusable Quick Add'}</small></span></label>`; }
   function readIngredientRows() { return [...document.querySelectorAll('.ingredient-row')].map(row => { const old = {}; row.querySelectorAll('input').forEach(input => { const field = input.dataset.ingField; old[field] = field === 'name' ? input.value.trim() : num(input.value); }); const idx = Number(row.querySelector('input').dataset.ingIndex); const source = modalRoot._ingredients?.[idx] || {}; return { ...source, ...old, unit: 'g', estimated: source.estimated || false }; }); }
   function mealOptions(selected) { return MEAL_TYPES.map(t => `<option value="${t}" ${t === selected ? 'selected' : ''}>${MEAL_LABELS[t]}</option>`).join(''); }
   function hasWeight(day) { return Boolean(day) && Number.isFinite(Number(day.weightKg)) && Number(day.weightKg) > 0; }
