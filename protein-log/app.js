@@ -245,7 +245,7 @@
     let analyzed = existing ? normalizeExisting(existing) : null;
     let mealEstimated = Boolean(existing?.estimated);
     const linkedSavedMeal = existing?.savedMealId ? state.savedMeals.find(meal => meal.id === existing.savedMealId) : null;
-    let saveToSavedMeals = Boolean(linkedSavedMeal);
+    let saveToSavedMeals = false;
     modalRoot.innerHTML = `<div class="modal-backdrop"><div class="sheet"><div class="sheet-handle"></div><div class="sheet-head"><h2>${existing ? 'Edit meal' : `Add ${MEAL_LABELS[category]}`}</h2><button class="close-button" id="close-sheet">×</button></div><div class="field"><label>What did you eat?</label><textarea id="food-text" placeholder="e.g. 100g oats with milk, 10 raisins and 5 almonds">${escapeHtml(existing?.description || '')}</textarea></div><button class="primary-button" id="analyze-food">Analyze</button><div id="food-error"></div><div id="food-result"></div></div></div>`;
     document.getElementById('close-sheet').onclick = closeModal;
     if (analyzed) renderFoodResult();
@@ -364,7 +364,7 @@
   function dayTotals(day) { const entries = Array.isArray(day?.entries) ? day.entries : []; return { protein: sum(entries, 'protein'), carbs: sum(entries, 'carbs'), fat: sum(entries, 'fat'), calories: sum(entries, 'calories') }; }
   function sevenDayProteinAverage(endDate) { let total = 0; for (let i = 0; i < 7; i++) total += dayTotals(state.days[shiftDate(endDate, -i)] || { entries: [] }).protein; return total / 7; }
   function sum(items, field) { return items.reduce((s, x) => s + num(x[field]), 0); }
-  function num(v) { const n = Number(v); return Number.isFinite(n) ? n : 0; }
+  function num(v) { const normalized = typeof v === 'string' ? v.trim().replace(/\s/g, '').replace(',', '.') : v; const n = Number(normalized); return Number.isFinite(n) ? n : 0; }
   function uid() { return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`; }
   function clone(v) { return JSON.parse(JSON.stringify(v)); }
   function applyTheme() { const choice = state.settings.theme || 'system'; const resolved = choice === 'system' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : choice; document.documentElement.dataset.theme = resolved; const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = resolved === 'dark' ? '#111312' : '#f5f5f7'; }
