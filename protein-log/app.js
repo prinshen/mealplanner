@@ -46,13 +46,13 @@
     render();
   }
 
-  function defaultState() { return { settings: { proteinTarget: 160, calorieTarget: 2500, carbTarget: 300, theme: 'system', claudeApiKey: '' }, days: {}, savedMeals: [] }; }
+  function defaultState() { return { settings: { proteinTarget: 160, calorieTarget: 2500, carbTarget: 300, theme: 'system', claudeApiKey: '' }, days: {}, savedMeals: [], copiedMeal: null }; }
   function loadState() {
     try {
       const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
       if (!parsed) return defaultState();
       const base = defaultState();
-      return { settings: { ...base.settings, ...(parsed.settings || {}) }, days: parsed.days || {}, savedMeals: Array.isArray(parsed.savedMeals) ? parsed.savedMeals : [] };
+      return { settings: { ...base.settings, ...(parsed.settings || {}) }, days: parsed.days || {}, savedMeals: Array.isArray(parsed.savedMeals) ? parsed.savedMeals : [], copiedMeal: parsed.copiedMeal && typeof parsed.copiedMeal.name === 'string' && Array.isArray(parsed.copiedMeal.ingredients) ? mealCopySnapshot(parsed.copiedMeal) : null };
     } catch { return defaultState(); }
   }
   function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
@@ -78,6 +78,7 @@
     app.innerHTML = `<section class="day-view">
       <div class="date-nav"><button class="date-button" id="prev-day" aria-label="Previous day">‹</button><div class="date-center"><label class="date-click-target" for="date-picker"><div class="date-label">${escapeHtml(isToday ? 'Today' : formatDate(selectedDate))}</div><div class="date-sub">${escapeHtml(formatLongDate(selectedDate))}</div></label><input class="date-picker" id="date-picker" type="date" max="${today}" value="${selectedDate}" /></div><button class="date-button" id="next-day" aria-label="Next day" ${canNext ? '' : 'disabled'}>›</button></div>
       <div class="card progress-card"><div class="progress-ring" style="--progress:${Math.round(pct * 360)}deg"><div class="ring-content"><div class="ring-consumed">${roundMacro(totals.protein)} g eaten</div><div class="ring-number">${roundMacro(Math.max(0, proteinTarget - totals.protein))} g</div><div class="ring-target">protein left</div><div class="over-target">${proteinOver ? `+${roundMacro(proteinOver)} g over` : ''}</div></div></div><div class="top-stats"><div><strong>${Math.round(totals.calories).toLocaleString()}</strong><span>kcal ${calorieOver ? `<em>+${Math.round(calorieOver)} kcal</em>` : ''}</span></div><div><strong>${roundMacro(totals.carbs)} g</strong><span>carbs ${carbOver ? `<em>+${roundMacro(carbOver)} g</em>` : ''}</span></div><div><strong>${roundMacro(totals.fat)} g</strong><span>fat</span></div></div><div class="average-stat"><strong>${roundMacro(average)} g</strong> daily protein average · last 7 days</div><div class="weight-average">${renderWeightAverage(weightTrend)}</div></div>
+      ${state.copiedMeal ? `<div class="card copied-meal-card"><div class="copied-meal-heading"><div><small>Copied meal</small><strong>${escapeHtml(state.copiedMeal.name)}</strong></div><button class="close-button" id="clear-copied-meal" aria-label="Clear copied meal">×</button></div><div class="copy-controls"><select id="paste-category" aria-label="Paste meal section">${mealOptions(state.copiedMeal.category)}</select><button class="primary-button" id="paste-meal">Paste meal</button></div><div class="copy-footer"><span>To: ${escapeHtml(isToday ? 'Today' : formatDate(selectedDate))}</span>${isToday ? '' : '<button class="copy-today" id="copy-go-today">Go to today</button>'}</div></div>` : ''}
       ${MEAL_TYPES.map(type => renderMealSection(type, day)).join('')}
       ${quick.length ? `<div class="quick-wrap"><div class="section-kicker">Quick add</div><div class="quick-row">${quick.map(m => `<button class="quick-add" data-quick-id="${m.id}"><span class="quick-add-name">${escapeHtml(m.name)}${m.estimated ? '<small class="estimated-badge">Estimated</small>' : ''}</span><span class="quick-add-macro">${roundMacro(m.protein)} g protein · ${roundMacro(m.carbs)} g carbs · ${roundMacro(m.fat)} g fat · ${Math.round(num(m.calories))} kcal</span></button>`).join('')}</div></div>` : ''}
       <label class="card creatine-row"><input id="creatine" type="checkbox" ${day.creatine ? 'checked' : ''}/><span class="checkmark">✓</span><span><strong>Creatine</strong><small>Mark as taken today</small></span></label>
@@ -94,6 +95,16 @@
     document.querySelectorAll('[data-add-meal]').forEach(btn => btn.onclick = () => openFoodModal(btn.dataset.addMeal));
     document.querySelectorAll('[data-entry-id]').forEach(btn => btn.onclick = () => openExistingEntry(btn.dataset.entryId));
     document.querySelectorAll('[data-quick-id]').forEach(btn => btn.onclick = () => quickAdd(btn.dataset.quickId));
+    const pasteMeal = document.getElementById('paste-meal');
+    if (pasteMeal) pasteMeal.onclick = () => {
+      const category = document.getElementById('paste-category').value;
+      getDay(selectedDate).entries.push({ ...mealCopySnapshot(state.copiedMeal), id: uid(), category });
+      saveState(); renderToday(); toast('Meal pasted');
+    };
+    const clearCopy = document.getElementById('clear-copied-meal');
+    if (clearCopy) clearCopy.onclick = () => { state.copiedMeal = null; saveState(); renderToday(); };
+    const goToday = document.getElementById('copy-go-today');
+    if (goToday) goToday.onclick = () => { selectedDate = localDateKey(new Date()); renderToday(); };
   }
 
   function renderMealSection(type, day) {
@@ -254,6 +265,13 @@
       const root = document.getElementById('food-result');
       modalRoot._ingredients = analyzed.ingredients;
       root.innerHTML = `<div class="card result-summary">${mealSummaryHtml(analyzed)}</div>${analyzed.ingredients.length ? `<div class="section-kicker">Ingredients</div><div class="ingredient-head"><span>Ingredient</span><span>Amount</span></div><div class="ingredient-list">${analyzed.ingredients.map((ing, i) => ingredientRowHtml(ing, i)).join('')}</div><div class="settings-help">Edit grams or nutrition per 100 g. Calories and all macros update automatically.</div>` : ''}${estimatedToggleHtml(mealEstimated)}${saveToSavedToggleHtml(saveToSavedMeals, Boolean(linkedSavedMeal))}<div class="modal-actions">${existing ? '<button class="secondary-button danger" id="delete-entry">Delete</button>' : '<button class="secondary-button" id="cancel-entry">Cancel</button>'}<button class="primary-button" id="save-entry">${existing ? 'Save meal' : 'Add meal'}</button></div>`;
+      if (existing) {
+        root.insertAdjacentHTML('afterbegin', '<div class="copy-entry-action"><button class="secondary-button" id="copy-entry">Copy meal</button><small>Copy these values to paste on another day</small></div>');
+        document.getElementById('copy-entry').onclick = () => {
+          state.copiedMeal = mealCopySnapshot({ ...analyzed, category, description: document.getElementById('food-text').value.trim(), estimated: document.getElementById('meal-estimated').checked });
+          saveState(); closeModal(); renderToday(); toast('Meal copied — choose a day and paste');
+        };
+      }
       root.querySelectorAll('.ingredient-row input').forEach(input => input.addEventListener('input', () => {
         analyzed.ingredients = readIngredientRows();
         analyzed = calculateFromIngredients(analyzed);
@@ -367,6 +385,9 @@
   function num(v) { const normalized = typeof v === 'string' ? v.trim().replace(/\s/g, '').replace(',', '.') : v; const n = Number(normalized); return Number.isFinite(n) ? n : 0; }
   function uid() { return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`; }
   function clone(v) { return JSON.parse(JSON.stringify(v)); }
+  function mealCopySnapshot(meal) {
+    return { name: meal.name || meal.description || 'Meal', description: meal.description || '', category: MEAL_TYPES.includes(meal.category) ? meal.category : 'snacks', protein: num(meal.protein), carbs: num(meal.carbs), fat: num(meal.fat), calories: num(meal.calories), estimated: Boolean(meal.estimated), ingredients: clone(Array.isArray(meal.ingredients) ? meal.ingredients : []), source: 'copy' };
+  }
   function applyTheme() { const choice = state.settings.theme || 'system'; const resolved = choice === 'system' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : choice; document.documentElement.dataset.theme = resolved; const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = resolved === 'dark' ? '#111312' : '#f5f5f7'; }
   function lockPage() { if (document.body.classList.contains('modal-open')) return; lockedScrollY = window.scrollY; document.body.style.top = `-${lockedScrollY}px`; document.body.classList.add('modal-open'); }
   function closeModal() { modalRoot.innerHTML = ''; document.body.classList.remove('modal-open'); document.body.style.top = ''; window.scrollTo(0, lockedScrollY); }
