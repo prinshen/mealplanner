@@ -36,17 +36,14 @@
       const dx = e.changedTouches[0].clientX - touchStart.x;
       const dy = e.changedTouches[0].clientY - touchStart.y;
       touchStart = null;
-      if (Math.abs(dx) < 55 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
-      const today = localDateKey(new Date());
-      if (dx > 0) selectedDate = shiftDate(selectedDate, -1);
-      else if (selectedDate < today) selectedDate = shiftDate(selectedDate, 1);
-      renderToday();
+      navigateDayBySwipe(dx, dy);
     }, { passive: true });
     if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js').catch(() => {});
     render();
   }
 
-  function defaultState() { return { settings: { proteinTarget: 160, calorieTarget: 2500, carbTarget: 300, theme: 'system', claudeApiKey: '' }, days: {}, savedMeals: [], copiedMeal: null }; }
+  function defaultState() { return { settings: { proteinTarget: 160, calorieTarget: 2500, theme: 'system', claudeApiKey: '' }, days: {}, savedMeals: [], copiedMeal: null }; }
+  function navigateDayBySwipe(dx, dy) { if (Math.abs(dx) < 55 || Math.abs(dx) < Math.abs(dy) * 1.25) return false; const today = localDateKey(new Date()); if (dx > 0) selectedDate = shiftDate(selectedDate, -1); else if (selectedDate < today) selectedDate = shiftDate(selectedDate, 1); else return false; renderToday(); return true; }
   function loadState() {
     try {
       const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
@@ -63,24 +60,27 @@
     const totals = dayTotals(day);
     const proteinTarget = Number(state.settings.proteinTarget) || 160;
     const calorieTarget = Math.max(1, Number(state.settings.calorieTarget) || 2500);
-    const carbTarget = Math.max(1, Number(state.settings.carbTarget) || 300);
     const pct = Math.min(1, totals.protein / proteinTarget);
-    const proteinOver = Math.max(0, totals.protein - proteinTarget);
-    const calorieOver = Math.max(0, totals.calories - calorieTarget);
-    const carbOver = Math.max(0, totals.carbs - carbTarget);
+    const targetLow = proteinTarget * .85;
+    const targetHigh = proteinTarget * 1.15;
+    const proteinStatus = totals.protein >= targetLow && totals.protein <= targetHigh
+      ? 'Within target range'
+      : totals.protein < targetLow
+        ? `${roundMacro(Math.max(0, proteinTarget - totals.protein))} g to target`
+        : `${roundMacro(totals.protein - targetHigh)} g above target range`;
     const today = localDateKey(new Date());
     const isToday = selectedDate === today;
     const canNext = selectedDate < today;
-    const average = sevenDayProteinAverage(selectedDate);
+    const average = sevenDayNutritionAverage(selectedDate);
     const weightTrend = rollingWeightSummary(selectedDate);
     const activities = day.activities || {};
     const quick = [...state.savedMeals].sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0));
     app.innerHTML = `<section class="day-view">
       <div class="date-nav"><button class="date-button" id="prev-day" aria-label="Previous day">‹</button><div class="date-center"><label class="date-click-target" for="date-picker"><div class="date-label">${escapeHtml(isToday ? 'Today' : formatDate(selectedDate))}</div><div class="date-sub">${escapeHtml(formatLongDate(selectedDate))}</div></label><input class="date-picker" id="date-picker" type="date" max="${today}" value="${selectedDate}" /></div><button class="date-button" id="next-day" aria-label="Next day" ${canNext ? '' : 'disabled'}>›</button></div>
-      <div class="card progress-card"><div class="progress-ring" style="--progress:${Math.round(pct * 360)}deg"><div class="ring-content"><div class="ring-consumed">${roundMacro(totals.protein)} g eaten</div><div class="ring-number">${roundMacro(Math.max(0, proteinTarget - totals.protein))} g</div><div class="ring-target">protein left</div><div class="over-target">${proteinOver ? `+${roundMacro(proteinOver)} g over` : ''}</div></div></div><div class="top-stats"><div><strong>${Math.round(totals.calories).toLocaleString()}</strong><span>kcal ${calorieOver ? `<em>+${Math.round(calorieOver)} kcal</em>` : ''}</span></div><div><strong>${roundMacro(totals.carbs)} g</strong><span>carbs ${carbOver ? `<em>+${roundMacro(carbOver)} g</em>` : ''}</span></div><div><strong>${roundMacro(totals.fat)} g</strong><span>fat</span></div></div><div class="average-stat"><strong>${roundMacro(average)} g</strong> daily protein average · last 7 days</div><div class="weight-average">${renderWeightAverage(weightTrend)}</div></div>
+      <div class="card progress-card"><div class="progress-ring" style="--progress:${Math.round(pct * 360)}deg"><div class="ring-content"><div class="ring-number">${roundMacro(totals.protein)} g</div><div class="ring-target">protein eaten</div><div class="ring-consumed">Target ${roundMacro(proteinTarget)} g</div><div class="over-target ${totals.protein >= targetLow && totals.protein <= targetHigh ? 'in-range' : ''}">${proteinStatus}</div></div></div><div class="top-stats single-stat"><div><strong>${Math.round(totals.calories).toLocaleString()}</strong><span>kcal recorded · ${Math.round(calorieTarget).toLocaleString()} kcal guide</span></div></div><div class="average-stat">${average.count ? `<strong>${roundMacro(average.protein)} g</strong> average recorded protein · ${average.count} logged day${average.count === 1 ? '' : 's'} · last 7 days` : 'No recorded meals in the last 7 days'}</div><div class="weight-average">${renderWeightAverage(weightTrend)}</div></div>
       ${state.copiedMeal ? `<div class="card copied-meal-card"><div class="copied-meal-heading"><div><small>Copied meal</small><strong>${escapeHtml(state.copiedMeal.name)}</strong></div><button class="close-button" id="clear-copied-meal" aria-label="Clear copied meal">×</button></div><div class="copy-controls"><select id="paste-category" aria-label="Paste meal section">${mealOptions(state.copiedMeal.category)}</select><button class="primary-button" id="paste-meal">Paste meal</button></div><div class="copy-footer"><span>To: ${escapeHtml(isToday ? 'Today' : formatDate(selectedDate))}</span>${isToday ? '' : '<button class="copy-today" id="copy-go-today">Go to today</button>'}</div></div>` : ''}
       ${MEAL_TYPES.map(type => renderMealSection(type, day)).join('')}
-      ${quick.length ? `<div class="quick-wrap"><div class="section-kicker">Quick add</div><div class="quick-row">${quick.map(m => `<button class="quick-add" data-quick-id="${m.id}"><span class="quick-add-name">${escapeHtml(m.name)}${m.estimated ? '<small class="estimated-badge">Estimated</small>' : ''}</span><span class="quick-add-macro">${roundMacro(m.protein)} g protein · ${roundMacro(m.carbs)} g carbs · ${roundMacro(m.fat)} g fat · ${Math.round(num(m.calories))} kcal</span></button>`).join('')}</div></div>` : ''}
+      ${quick.length ? `<div class="quick-wrap"><div class="section-kicker">Quick add</div><div class="quick-row">${quick.map(m => `<button class="quick-add" data-quick-id="${m.id}"><span class="quick-add-name">${escapeHtml(m.name)}</span><span class="quick-add-macro">${roundMacro(m.protein)} g protein · ${Math.round(num(m.calories))} kcal</span></button>`).join('')}</div></div>` : ''}
       <label class="card creatine-row"><input id="creatine" type="checkbox" ${day.creatine ? 'checked' : ''}/><span class="checkmark">✓</span><span><strong>Creatine</strong><small>Mark as taken today</small></span></label>
       <div class="card activity-card"><div class="activity-head"><strong>Activity</strong><small>Optional markers for this day</small></div><div class="activity-grid">${activityToggle('strength', 'Strength workout', activities.strength)}${activityToggle('run', 'Run', activities.run)}${activityToggle('longBike', 'Longer bike ride', activities.longBike)}</div></div>
       <div class="card weight-card"><div><strong>Morning body weight</strong><small>${hasWeight(day) ? `${formatWeight(day.weightKg)} kg logged for this day` : 'Optional daily weigh-in'}</small></div><div class="weight-controls"><div class="weight-input"><input id="morning-weight" aria-label="Morning body weight in kilograms" type="number" inputmode="decimal" min="1" step="0.1" placeholder="82.7" value="${hasWeight(day) ? escapeAttr(day.weightKg) : ''}" /><span>kg</span></div><button class="secondary-button" id="save-weight">Save</button>${hasWeight(day) ? '<button class="weight-delete" id="delete-weight" aria-label="Delete morning weight">×</button>' : ''}</div></div>
@@ -89,7 +89,7 @@
     document.getElementById('next-day').onclick = () => { if (canNext) { selectedDate = shiftDate(selectedDate, 1); renderToday(); } };
     document.getElementById('date-picker').onchange = e => { if (e.target.value) { selectedDate = e.target.value; renderToday(); } };
     document.getElementById('creatine').onchange = e => { day.creatine = e.target.checked; saveState(); };
-    document.getElementById('save-weight').onclick = () => { const value = Number(document.getElementById('morning-weight').value); if (!Number.isFinite(value) || value <= 0) return toast('Enter a valid weight in kg'); day.weightKg = Math.round(value * 10) / 10; saveState(); renderToday(); toast('Morning weight saved'); };
+    document.getElementById('save-weight').onclick = () => { const value = num(document.getElementById('morning-weight').value); if (value <= 0) return toast('Enter a valid weight in kg'); day.weightKg = Math.round(value * 10) / 10; saveState(); renderToday(); toast('Morning weight saved'); };
     const deleteWeight = document.getElementById('delete-weight'); if (deleteWeight) deleteWeight.onclick = () => { delete day.weightKg; saveState(); renderToday(); toast('Weight entry deleted'); };
     document.querySelectorAll('[data-activity]').forEach(input => input.onchange = () => { day.activities = { ...(day.activities || {}), [input.dataset.activity]: input.checked }; saveState(); });
     document.querySelectorAll('[data-add-meal]').forEach(btn => btn.onclick = () => openFoodModal(btn.dataset.addMeal));
@@ -109,8 +109,8 @@
 
   function renderMealSection(type, day) {
     const entries = day.entries.filter(e => e.category === type);
-    const protein = sum(entries, 'protein'), carbs = sum(entries, 'carbs'), fat = sum(entries, 'fat');
-    return `<div class="card meal-card"><div class="meal-header"><div><div class="meal-title">${MEAL_LABELS[type]}</div><div class="meal-subtitle">${entries.length ? `${roundMacro(protein)} g protein · ${roundMacro(carbs)} g carbs · ${roundMacro(fat)} g fat` : 'No food added'}</div></div><button class="add-button" data-add-meal="${type}">+ Add</button></div>${entries.length ? entries.map(e => `<button class="meal-entry" data-entry-id="${e.id}"><span><strong>${escapeHtml(e.name || e.description || 'Meal')}</strong><span class="entry-badges">${e.source === 'saved' ? '<small>Saved meal</small>' : ''}${e.estimated ? '<small class="estimated-badge">Estimated</small>' : ''}</span></span><span class="entry-macros"><strong>${roundMacro(e.protein)} g protein</strong><small>${roundMacro(e.carbs)} g carbs · ${roundMacro(e.fat)} g fat · ${Math.round(num(e.calories))} kcal</small></span></button>`).join('') : '<div class="meal-empty">Nothing here yet.</div>'}</div>`;
+    const protein = sum(entries, 'protein'), calories = sum(entries, 'calories');
+    return `<div class="card meal-card"><div class="meal-header"><div><div class="meal-title">${MEAL_LABELS[type]}</div><div class="meal-subtitle">${entries.length ? `${roundMacro(protein)} g protein · ${Math.round(calories)} kcal` : 'No food added'}</div></div><button class="add-button" data-add-meal="${type}">+ Add</button></div>${entries.length ? entries.map(e => `<button class="meal-entry" data-entry-id="${e.id}"><span><strong>${escapeHtml(e.name || e.description || 'Meal')}</strong><span class="entry-badges">${e.source === 'saved' ? '<small>Saved meal</small>' : ''}</span></span><span class="entry-macros"><strong>${roundMacro(e.protein)} g protein</strong><small>${Math.round(num(e.calories))} kcal</small></span></button>`).join('') : '<div class="meal-empty">Nothing here yet.</div>'}</div>`;
   }
 
   function activityToggle(key, label, checked) {
@@ -124,17 +124,15 @@
       <div class="page-head"><div><h1>Weekly review</h1><div class="date-sub">${escapeHtml(report.dateRange)}</div></div></div>
       <div class="week-nav"><button class="date-button" id="prev-week" aria-label="Previous week">‹</button><label class="week-picker-label" for="week-picker"><strong>${escapeHtml(formatWeekLabel(selectedWeekStart))}</strong><span>Select week</span></label><input id="week-picker" class="week-picker" type="date" value="${selectedWeekStart}"/><button class="date-button" id="next-week" aria-label="Next week">›</button></div>
       <div class="weekly-grid">
-        <div class="card metric-card primary-metric"><span>Average morning weight</span><strong>${s.averageWeightKg == null ? '—' : `${formatWeight(s.averageWeightKg)} kg`}</strong><small>${s.weightChangeKg == null ? `${s.weightEntries} weigh-in${s.weightEntries === 1 ? '' : 's'}` : `${signedWeight(s.weightChangeKg)} kg vs previous week`}</small></div>
-        <div class="card metric-card"><span>Average calories</span><strong>${Math.round(s.averageCalories).toLocaleString()}</strong><small>kcal / day</small></div>
-        <div class="card metric-card"><span>Average protein</span><strong>${roundMacro(s.averageProteinG)} g</strong><small>per day</small></div>
-        <div class="card metric-card"><span>Average carbs</span><strong>${roundMacro(s.averageCarbsG)} g</strong><small>per day</small></div>
-        <div class="card metric-card"><span>Average fat</span><strong>${roundMacro(s.averageFatG)} g</strong><small>per day</small></div>
+        <div class="card metric-card primary-metric"><span>Average morning weight</span><strong>${s.averageWeightKg == null ? '—' : `${formatWeight(s.averageWeightKg)} kg`}</strong><small>${s.weightEntries} weigh-in${s.weightEntries === 1 ? '' : 's'}${s.weightChangeKg == null ? '' : ` · ${signedWeight(s.weightChangeKg)} kg vs previous week`}</small></div>
+        <div class="card metric-card"><span>Average recorded protein</span><strong>${s.loggedNutritionDays ? `${roundMacro(s.averageProteinG)} g` : '—'}</strong><small>${s.loggedNutritionDays} logged day${s.loggedNutritionDays === 1 ? '' : 's'}</small></div>
+        <div class="card metric-card"><span>Average recorded calories</span><strong>${s.loggedNutritionDays ? Math.round(s.averageCalories).toLocaleString() : '—'}</strong><small>${s.loggedNutritionDays ? 'kcal / logged day' : 'No meals logged'}</small></div>
         <div class="card metric-card"><span>Workouts</span><strong>${s.strengthWorkouts + s.runs + s.longBikeRides}</strong><small>${s.strengthWorkouts} strength · ${s.runs} run · ${s.longBikeRides} bike</small></div>
         <div class="card metric-card"><span>Creatine</span><strong>${s.creatineDays}/7</strong><small>days taken</small></div>
       </div>
       <div class="card trend-card"><div class="trend-head"><strong>Weight trend</strong><small>Morning weigh-ins · weekly changes matter more than daily noise</small></div>${weightTrendSvg(report.days)}</div>
       <div class="section-kicker">Daily overview</div>
-      <div class="card daily-review">${report.days.map(d => `<div class="daily-review-row"><div><strong>${escapeHtml(formatShortDay(d.date))}</strong><small>${d.weightKg == null ? 'No weigh-in' : `${formatWeight(d.weightKg)} kg`}</small></div><div class="daily-review-macros"><strong>${Math.round(d.calories)} kcal</strong><small>${roundMacro(d.proteinG)} g protein · ${roundMacro(d.carbsG)} g carbs · ${roundMacro(d.fatG)} g fat</small></div></div>`).join('')}</div>
+      <div class="card daily-review">${report.days.map(d => `<div class="daily-review-row"><div><strong>${escapeHtml(formatShortDay(d.date))}</strong><small>${d.weightKg == null ? 'No weigh-in' : `${formatWeight(d.weightKg)} kg`}</small></div><div class="daily-review-macros"><strong>${d.hasNutrition ? `${roundMacro(d.proteinG)} g protein` : 'No meals logged'}</strong><small>${d.hasNutrition ? `${Math.round(d.calories)} kcal recorded` : '—'}</small></div></div>`).join('')}</div>
       <div class="section-kicker">Export this week</div>
       <div class="card export-card"><div><strong>Full nutrition + weight report</strong><small>Includes daily data, activities, creatine, meals and ingredient-level detail.</small></div><div class="export-actions"><button class="primary-button" id="export-csv">Export CSV</button><button class="secondary-button" id="export-json">Export JSON</button></div></div>
     </section>`;
@@ -151,21 +149,22 @@
       const source = state.days[date] || { date, entries: [] };
       const totals = dayTotals(source);
       const activities = source.activities || {};
-      return { date, weightKg: hasWeight(source) ? Number(source.weightKg) : null, calories: totals.calories, proteinG: totals.protein, carbsG: totals.carbs, fatG: totals.fat, creatine: Boolean(source.creatine), strengthWorkout: Boolean(activities.strength), run: Boolean(activities.run), longBikeRide: Boolean(activities.longBike), meals: (source.entries || []).map(entry => ({ id: entry.id, section: MEAL_LABELS[entry.category] || entry.category || '', name: entry.name || entry.description || 'Meal', description: entry.description || '', calories: num(entry.calories), proteinG: num(entry.protein), carbsG: num(entry.carbs), fatG: num(entry.fat), estimated: Boolean(entry.estimated), ingredients: clone(entry.ingredients || []) })) };
+      const entries = Array.isArray(source.entries) ? source.entries : [];
+      return { date, weightKg: hasWeight(source) ? Number(source.weightKg) : null, hasNutrition: entries.length > 0, calories: totals.calories, proteinG: totals.protein, creatine: Boolean(source.creatine), strengthWorkout: Boolean(activities.strength), run: Boolean(activities.run), longBikeRide: Boolean(activities.longBike), meals: entries.map(entry => ({ id: entry.id, section: MEAL_LABELS[entry.category] || entry.category || '', name: entry.name || entry.description || 'Meal', description: entry.description || '', calories: num(entry.calories), proteinG: num(entry.protein), ingredients: activeIngredients(entry.ingredients) })) };
     });
     const weights = days.map(d => d.weightKg).filter(v => v != null);
     const previousWeights = weekDates(shiftDate(startDate, -7)).map(date => state.days[date]).filter(hasWeight).map(day => Number(day.weightKg));
     const averageWeightKg = averageNumbers(weights);
     const previousAverageWeightKg = averageNumbers(previousWeights);
+    const loggedDays = days.filter(d => d.hasNutrition);
     const summary = {
       averageWeightKg,
       previousAverageWeightKg,
       weightChangeKg: averageWeightKg == null || previousAverageWeightKg == null ? null : averageWeightKg - previousAverageWeightKg,
       weightEntries: weights.length,
-      averageCalories: averageNumbers(days.map(d => d.calories)) || 0,
-      averageProteinG: averageNumbers(days.map(d => d.proteinG)) || 0,
-      averageCarbsG: averageNumbers(days.map(d => d.carbsG)) || 0,
-      averageFatG: averageNumbers(days.map(d => d.fatG)) || 0,
+      loggedNutritionDays: loggedDays.length,
+      averageCalories: averageNumbers(loggedDays.map(d => d.calories)) || 0,
+      averageProteinG: averageNumbers(loggedDays.map(d => d.proteinG)) || 0,
       strengthWorkouts: days.filter(d => d.strengthWorkout).length,
       runs: days.filter(d => d.run).length,
       longBikeRides: days.filter(d => d.longBikeRide).length,
@@ -206,18 +205,18 @@
   }
 
   function weeklyCsv(report) {
-    const columns = ['week_start','week_end','weekly_average_weight_kg','weight_change_vs_previous_week_kg','average_daily_calories','average_daily_protein_g','average_daily_carbs_g','average_daily_fat_g','weekly_strength_workouts','weekly_runs','weekly_long_bike_rides','creatine_days_out_of_7','date','morning_weight_kg','daily_calories','daily_protein_g','daily_carbs_g','daily_fat_g','creatine','strength_workout','run','long_bike_ride','meal_section','meal_name','food_name','quantity','quantity_unit','quantity_g','item_calories','item_protein_g','item_carbs_g','item_fat_g','meal_calories','meal_protein_g','meal_carbs_g','meal_fat_g','estimated','ingredient_estimated','meal_description'];
+    const columns = ['week_start','week_end','weekly_average_weight_kg','weight_change_vs_previous_week_kg','weight_entries','logged_nutrition_days','average_recorded_calories','average_recorded_protein_g','weekly_strength_workouts','weekly_runs','weekly_long_bike_rides','creatine_days_out_of_7','date','morning_weight_kg','nutrition_logged','daily_calories','daily_protein_g','creatine','strength_workout','run','long_bike_ride','meal_section','meal_name','food_name','quantity_g','item_calories','item_protein_g','meal_calories','meal_protein_g','meal_description'];
     const rows = [];
-    const weekly = { week_start: report.weekStart, week_end: report.weekEnd, weekly_average_weight_kg: report.summary.averageWeightKg == null ? '' : roundExport(report.summary.averageWeightKg), weight_change_vs_previous_week_kg: report.summary.weightChangeKg == null ? '' : roundExport(report.summary.weightChangeKg), average_daily_calories: roundExport(report.summary.averageCalories), average_daily_protein_g: roundExport(report.summary.averageProteinG), average_daily_carbs_g: roundExport(report.summary.averageCarbsG), average_daily_fat_g: roundExport(report.summary.averageFatG), weekly_strength_workouts: report.summary.strengthWorkouts, weekly_runs: report.summary.runs, weekly_long_bike_rides: report.summary.longBikeRides, creatine_days_out_of_7: report.summary.creatineDays };
+    const weekly = { week_start: report.weekStart, week_end: report.weekEnd, weekly_average_weight_kg: report.summary.averageWeightKg == null ? '' : roundExport(report.summary.averageWeightKg), weight_change_vs_previous_week_kg: report.summary.weightChangeKg == null ? '' : roundExport(report.summary.weightChangeKg), weight_entries: report.summary.weightEntries, logged_nutrition_days: report.summary.loggedNutritionDays, average_recorded_calories: report.summary.loggedNutritionDays ? roundExport(report.summary.averageCalories) : '', average_recorded_protein_g: report.summary.loggedNutritionDays ? roundExport(report.summary.averageProteinG) : '', weekly_strength_workouts: report.summary.strengthWorkouts, weekly_runs: report.summary.runs, weekly_long_bike_rides: report.summary.longBikeRides, creatine_days_out_of_7: report.summary.creatineDays };
     report.days.forEach(day => {
-      const daily = { ...weekly, date: day.date, morning_weight_kg: day.weightKg ?? '', daily_calories: roundExport(day.calories), daily_protein_g: roundExport(day.proteinG), daily_carbs_g: roundExport(day.carbsG), daily_fat_g: roundExport(day.fatG), creatine: yesNo(day.creatine), strength_workout: yesNo(day.strengthWorkout), run: yesNo(day.run), long_bike_ride: yesNo(day.longBikeRide) };
+      const daily = { ...weekly, date: day.date, morning_weight_kg: day.weightKg ?? '', nutrition_logged: yesNo(day.hasNutrition), daily_calories: day.hasNutrition ? roundExport(day.calories) : '', daily_protein_g: day.hasNutrition ? roundExport(day.proteinG) : '', creatine: yesNo(day.creatine), strength_workout: yesNo(day.strengthWorkout), run: yesNo(day.run), long_bike_ride: yesNo(day.longBikeRide) };
       if (!day.meals.length) { rows.push(daily); return; }
       day.meals.forEach(meal => {
-        const mealBase = { ...daily, meal_section: meal.section, meal_name: meal.name, meal_calories: roundExport(meal.calories), meal_protein_g: roundExport(meal.proteinG), meal_carbs_g: roundExport(meal.carbsG), meal_fat_g: roundExport(meal.fatG), estimated: yesNo(meal.estimated), meal_description: meal.description };
-        if (!meal.ingredients.length) { rows.push({ ...mealBase, food_name: meal.name, item_calories: roundExport(meal.calories), item_protein_g: roundExport(meal.proteinG), item_carbs_g: roundExport(meal.carbsG), item_fat_g: roundExport(meal.fatG), ingredient_estimated: '' }); return; }
+        const mealBase = { ...daily, meal_section: meal.section, meal_name: meal.name, meal_calories: roundExport(meal.calories), meal_protein_g: roundExport(meal.proteinG), meal_description: meal.description };
+        if (!meal.ingredients.length) { rows.push({ ...mealBase, food_name: meal.name, item_calories: roundExport(meal.calories), item_protein_g: roundExport(meal.proteinG) }); return; }
         meal.ingredients.forEach(item => {
-          const amount = num(item.amount), unit = String(item.unit || ''), factor = amount / 100;
-          rows.push({ ...mealBase, food_name: item.name || 'Ingredient', quantity: item.amount ?? '', quantity_unit: unit, quantity_g: unit.toLowerCase() === 'g' ? amount : '', item_calories: Number.isFinite(Number(item.caloriesPer100g)) ? roundExport(factor * Number(item.caloriesPer100g)) : '', item_protein_g: Number.isFinite(Number(item.proteinPer100g)) ? roundExport(factor * Number(item.proteinPer100g)) : '', item_carbs_g: Number.isFinite(Number(item.carbsPer100g)) ? roundExport(factor * Number(item.carbsPer100g)) : '', item_fat_g: Number.isFinite(Number(item.fatPer100g)) ? roundExport(factor * Number(item.fatPer100g)) : '', ingredient_estimated: yesNo(Boolean(item.estimated)) });
+          const amount = num(item.amount), factor = amount / 100;
+          rows.push({ ...mealBase, food_name: item.name || 'Ingredient', quantity_g: amount, item_calories: roundExport(factor * num(item.caloriesPer100g)), item_protein_g: roundExport(factor * num(item.proteinPer100g)) });
         });
       });
     });
@@ -236,58 +235,70 @@
 
   function renderSaved() {
     const meals = [...state.savedMeals].sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0));
-    app.innerHTML = `<div class="page-head"><h1>Saved meals</h1><button class="primary-button" id="new-saved">+ New</button></div>${meals.length ? meals.map(m => `<div class="card saved-card"><div class="saved-info"><div class="saved-title-row"><strong>${escapeHtml(m.name)}</strong><span class="saved-category">${MEAL_LABELS[m.category]}</span>${m.estimated ? '<span class="estimated-badge">Estimated</span>' : ''}</div><small class="saved-nutrition">${roundMacro(m.protein)} g protein · ${roundMacro(m.carbs)} g carbs · ${roundMacro(m.fat)} g fat · ${Math.round(num(m.calories))} kcal</small></div><button class="secondary-button" data-saved-edit="${m.id}">Edit</button></div>`).join('') : '<div class="card empty-card">No saved meals yet.</div>'}`;
+    app.innerHTML = `<div class="page-head"><h1>Saved meals</h1><button class="primary-button" id="new-saved">+ New</button></div>${meals.length ? meals.map(m => `<div class="card saved-card"><div class="saved-info"><div class="saved-title-row"><strong>${escapeHtml(m.name)}</strong><span class="saved-category">${MEAL_LABELS[m.category] || MEAL_LABELS.snacks}</span></div><small class="saved-nutrition">${roundMacro(m.protein)} g protein · ${Math.round(num(m.calories))} kcal</small></div><button class="secondary-button" data-saved-edit="${m.id}">Edit</button></div>`).join('') : '<div class="card empty-card">No saved meals yet.</div>'}`;
     document.getElementById('new-saved').onclick = () => openSavedModal();
     document.querySelectorAll('[data-saved-edit]').forEach(btn => btn.onclick = () => openSavedModal(btn.dataset.savedEdit));
   }
 
   function renderSettings() {
-    app.innerHTML = `<h1>Settings</h1><div class="section-kicker">Appearance</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="theme-select">Theme</label><select id="theme-select"><option value="system" ${(state.settings.theme || 'system') === 'system' ? 'selected' : ''}>System default</option><option value="light" ${state.settings.theme === 'light' ? 'selected' : ''}>Light</option><option value="dark" ${state.settings.theme === 'dark' ? 'selected' : ''}>Dark</option></select></div></div><div class="section-kicker">Goals</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="protein-target">Daily protein target</label><input id="protein-target" type="number" inputmode="decimal" min="1" step="1" value="${Number(state.settings.proteinTarget) || 160}" /></div><div class="settings-row"><label class="settings-label" for="calorie-target">Daily calorie goal</label><input id="calorie-target" type="number" inputmode="numeric" min="1" step="50" value="${Number(state.settings.calorieTarget) || 2500}" /></div><div class="settings-row"><label class="settings-label" for="carb-target">Daily carb goal</label><input id="carb-target" type="number" inputmode="decimal" min="1" step="10" value="${Number(state.settings.carbTarget) || 300}" /><div class="settings-help">Calories and carbs stay secondary; the day view highlights when you go over either goal.</div></div></div><div class="section-kicker">Claude</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="claude-api-key">Claude API key</label><input id="claude-api-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…" value="${escapeAttr(state.settings.claudeApiKey || '')}" /><div class="settings-help">Stored only in this browser. Protein Log sends meals directly to Anthropic Claude.</div></div></div><div class="card settings-group"><div class="settings-row"><strong>Storage</strong><div class="settings-help">Meals, goals, creatine checks, appearance and your Claude key stay in Safari on this iPhone.</div></div></div>`;
+    app.innerHTML = `<h1>Settings</h1><div class="section-kicker">Appearance</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="theme-select">Theme</label><select id="theme-select"><option value="system" ${(state.settings.theme || 'system') === 'system' ? 'selected' : ''}>System default</option><option value="light" ${state.settings.theme === 'light' ? 'selected' : ''}>Light</option><option value="dark" ${state.settings.theme === 'dark' ? 'selected' : ''}>Dark</option></select></div></div><div class="section-kicker">Targets</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="protein-target">Daily protein target</label><input id="protein-target" type="number" inputmode="decimal" min="1" step="1" value="${Number(state.settings.proteinTarget) || 160}" /></div><div class="settings-row"><label class="settings-label" for="calorie-target">Daily calorie guide</label><input id="calorie-target" type="number" inputmode="numeric" min="1" step="50" value="${Number(state.settings.calorieTarget) || 2500}" /><div class="settings-help">Calories are shown as a neutral guide. Protein remains the primary target.</div></div></div><div class="section-kicker">Claude</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="claude-api-key">Claude API key</label><input id="claude-api-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…" value="${escapeAttr(state.settings.claudeApiKey || '')}" /><div class="settings-help">Stored only in this browser. AI analysis is optional; meals can always be entered manually.</div></div></div><div class="card settings-group"><div class="settings-row"><strong>Storage</strong><div class="settings-help">Meals, targets, creatine checks, activities, weight, appearance and your Claude key stay in Safari on this iPhone.</div></div></div>`;
     document.getElementById('theme-select').onchange = e => { state.settings.theme = e.target.value; applyTheme(); saveState(); toast('Theme saved'); };
     bindSetting('protein-target', 'proteinTarget', 160, 'Protein target saved');
     bindSetting('calorie-target', 'calorieTarget', 2500, 'Calorie goal saved');
-    bindSetting('carb-target', 'carbTarget', 300, 'Carb goal saved');
     document.getElementById('claude-api-key').onchange = e => { state.settings.claudeApiKey = e.target.value.trim(); saveState(); toast('Claude API key saved locally'); };
   }
   function bindSetting(id, key, fallback, message) { document.getElementById(id).onchange = e => { state.settings[key] = Math.max(1, Number(e.target.value) || fallback); saveState(); toast(message); }; }
 
   function openFoodModal(category, existing = null) {
     lockPage();
-    let analyzed = existing ? normalizeExisting(existing) : null;
-    let mealEstimated = Boolean(existing?.estimated);
+    let draft = existing ? normalizeExisting(existing) : { name: '', description: '', protein: 0, calories: 0, ingredients: [], manualTotals: { protein: false, calories: false } };
+    let analyzedWithAI = existing?.source === 'ai';
     const linkedSavedMeal = existing?.savedMealId ? state.savedMeals.find(meal => meal.id === existing.savedMealId) : null;
     let saveToSavedMeals = false;
-    modalRoot.innerHTML = `<div class="modal-backdrop"><div class="sheet"><div class="sheet-handle"></div><div class="sheet-head"><h2>${existing ? 'Edit meal' : `Add ${MEAL_LABELS[category]}`}</h2><button class="close-button" id="close-sheet">×</button></div><div class="field"><label>What did you eat?</label><textarea id="food-text" placeholder="e.g. 100g oats with milk, 10 raisins and 5 almonds">${escapeHtml(existing?.description || '')}</textarea></div><button class="primary-button" id="analyze-food">Analyze</button><div id="food-error"></div><div id="food-result"></div></div></div>`;
+    modalRoot.innerHTML = `<div class="modal-backdrop"><div class="sheet"><div class="sheet-handle"></div><div class="sheet-head"><h2>${existing ? 'Edit meal' : `Add ${MEAL_LABELS[category]}`}</h2><button class="close-button" id="close-sheet">×</button></div><div id="food-editor"></div></div></div>`;
     document.getElementById('close-sheet').onclick = closeModal;
-    if (analyzed) renderFoodResult();
-    document.getElementById('analyze-food').onclick = async () => { const text = document.getElementById('food-text').value.trim(); if (!text) return; try { analyzed = await analyzeFood(text, category); mealEstimated = false; renderFoodResult(); } catch (err) { showInlineError('food-error', err.message || 'Could not analyze that meal.'); } };
-    function renderFoodResult() {
-      const root = document.getElementById('food-result');
-      modalRoot._ingredients = analyzed.ingredients;
-      root.innerHTML = `<div class="card result-summary">${mealSummaryHtml(analyzed)}</div>${analyzed.ingredients.length ? `<div class="section-kicker">Ingredients</div><div class="ingredient-head"><span>Ingredient</span><span>Amount</span></div><div class="ingredient-list">${analyzed.ingredients.map((ing, i) => ingredientRowHtml(ing, i)).join('')}</div><div class="settings-help">Edit grams or nutrition per 100 g. Calories and all macros update automatically.</div>` : ''}${estimatedToggleHtml(mealEstimated)}${saveToSavedToggleHtml(saveToSavedMeals, Boolean(linkedSavedMeal))}<div class="modal-actions">${existing ? '<button class="secondary-button danger" id="delete-entry">Delete</button>' : '<button class="secondary-button" id="cancel-entry">Cancel</button>'}<button class="primary-button" id="save-entry">${existing ? 'Save meal' : 'Add meal'}</button></div>`;
+    renderFoodEditor();
+
+    function renderFoodEditor() {
+      const root = document.getElementById('food-editor');
+      modalRoot._ingredients = draft.ingredients;
+      root.innerHTML = `<div class="field"><label>Meal name or description</label><textarea id="food-text" placeholder="e.g. 100g oats with milk, 10 raisins and 5 almonds">${escapeHtml(draft.description || draft.name || '')}</textarea></div><div class="analysis-action"><button class="secondary-button" id="analyze-food">Analyze with Claude</button><small>Optional — you can enter protein and calories manually</small></div><div id="food-error"></div><div class="card total-editor"><div class="total-editor-head"><strong>${analyzedWithAI ? 'AI result' : 'Meal totals'}</strong><small>Edit either total directly</small></div><div class="macro-grid"><div class="field"><label>Protein (g)</label><input id="meal-protein" inputmode="decimal" placeholder="0" value="${draft.protein || draft.protein === 0 && existing ? escapeAttr(roundInput(draft.protein)) : ''}" /></div><div class="field"><label>Calories</label><input id="meal-calories" inputmode="decimal" placeholder="0" value="${draft.calories || draft.calories === 0 && existing ? escapeAttr(roundInput(draft.calories)) : ''}" /></div></div></div>${saveToSavedToggleHtml(saveToSavedMeals, Boolean(linkedSavedMeal))}${existing ? '<div class="copy-entry-action"><button class="secondary-button" id="copy-entry">Copy meal</button><small>Copy these values to paste on another day</small></div>' : ''}<div class="modal-actions">${existing ? '<button class="secondary-button danger" id="delete-entry">Delete</button>' : '<button class="secondary-button" id="cancel-entry">Cancel</button>'}<button class="primary-button" id="save-entry">${existing ? 'Save meal' : 'Add meal'}</button></div>${draft.ingredients.length ? `<details class="ingredient-details"><summary>Ingredient details <span>${draft.ingredients.length}</span></summary><div class="ingredient-head"><span>Ingredient</span><span>Amount</span></div><div class="ingredient-list">${draft.ingredients.map((ing, i) => ingredientRowHtml(ing, i)).join('')}</div><div class="settings-help">Ingredient edits recalculate totals unless you have corrected a total manually.</div></details>` : ''}`;
+      document.getElementById('food-text').oninput = e => { draft.description = e.target.value; };
+      document.getElementById('meal-protein').oninput = e => { draft.protein = num(e.target.value); draft.manualTotals.protein = true; };
+      document.getElementById('meal-calories').oninput = e => { draft.calories = num(e.target.value); draft.manualTotals.calories = true; };
+      document.getElementById('analyze-food').onclick = async () => {
+        const text = document.getElementById('food-text').value.trim();
+        if (!text) return showInlineError('food-error', 'Enter a meal name or description first.');
+        const button = document.getElementById('analyze-food'); button.disabled = true; button.textContent = 'Analyzing…';
+        try { const result = await analyzeFood(text, category); draft = { ...result, description: text, manualTotals: { protein: false, calories: false } }; analyzedWithAI = true; renderFoodEditor(); }
+        catch (err) { button.disabled = false; button.textContent = 'Analyze with Claude'; showInlineError('food-error', err.message || 'Could not analyze that meal.'); }
+      };
       if (existing) {
-        root.insertAdjacentHTML('afterbegin', '<div class="copy-entry-action"><button class="secondary-button" id="copy-entry">Copy meal</button><small>Copy these values to paste on another day</small></div>');
         document.getElementById('copy-entry').onclick = () => {
-          state.copiedMeal = mealCopySnapshot({ ...analyzed, category, description: document.getElementById('food-text').value.trim(), estimated: document.getElementById('meal-estimated').checked });
+          syncDraft();
+          state.copiedMeal = mealCopySnapshot({ ...draft, category });
           saveState(); closeModal(); renderToday(); toast('Meal copied — choose a day and paste');
         };
       }
       root.querySelectorAll('.ingredient-row input').forEach(input => input.addEventListener('input', () => {
-        analyzed.ingredients = readIngredientRows();
-        analyzed = calculateFromIngredients(analyzed);
-        root.querySelector('.result-summary').innerHTML = mealSummaryHtml(analyzed);
+        draft.ingredients = readIngredientRows();
+        draft = recalculateUnfixedTotals(draft);
+        if (!draft.manualTotals.protein) document.getElementById('meal-protein').value = roundInput(draft.protein);
+        if (!draft.manualTotals.calories) document.getElementById('meal-calories').value = roundInput(draft.calories);
       }));
-      document.getElementById('meal-estimated').onchange = e => { mealEstimated = e.target.checked; };
       document.getElementById('save-to-saved').onchange = e => { saveToSavedMeals = e.target.checked; };
       const cancel = document.getElementById('cancel-entry'); if (cancel) cancel.onclick = closeModal;
       const del = document.getElementById('delete-entry'); if (del) del.onclick = () => { const d = getDay(selectedDate); d.entries = d.entries.filter(e => e.id !== existing.id); saveState(); closeModal(); renderToday(); };
       document.getElementById('save-entry').onclick = () => {
+        syncDraft();
+        if (!draft.description.trim()) return showInlineError('food-error', 'Enter a meal name or description.');
+        if (!hasNumberInput('meal-protein') || !hasNumberInput('meal-calories')) return showInlineError('food-error', 'Enter both protein and calories.');
         const d = getDay(selectedDate);
-        const description = document.getElementById('food-text').value.trim();
-        const entry = { id: existing?.id || uid(), category, description, name: analyzed.name || 'Meal', protein: num(analyzed.protein), carbs: num(analyzed.carbs), fat: num(analyzed.fat), calories: num(analyzed.calories), estimated: document.getElementById('meal-estimated').checked, ingredients: clone(analyzed.ingredients || []), source: existing?.source || 'ai', ...(existing?.savedMealId ? { savedMealId: existing.savedMealId } : {}) };
+        const description = draft.description.trim();
+        const entry = { id: existing?.id || uid(), category, description, name: analyzedWithAI && draft.name ? draft.name : description, protein: num(draft.protein), calories: num(draft.calories), manualTotals: { ...draft.manualTotals }, ingredients: activeIngredients(draft.ingredients), source: existing?.source || (analyzedWithAI ? 'ai' : 'manual'), ...(existing?.savedMealId ? { savedMealId: existing.savedMealId } : {}) };
         if (document.getElementById('save-to-saved').checked) {
           const currentSaved = entry.savedMealId ? state.savedMeals.find(meal => meal.id === entry.savedMealId) : null;
-          const savedMeal = { id: currentSaved?.id || uid(), name: entry.name, description, category, protein: entry.protein, carbs: entry.carbs, fat: entry.fat, calories: entry.calories, estimated: entry.estimated, ingredients: clone(entry.ingredients), usageCount: currentSaved?.usageCount || 0 };
+          const savedMeal = { id: currentSaved?.id || uid(), name: entry.name, description, category, protein: entry.protein, calories: entry.calories, manualTotals: { ...entry.manualTotals }, ingredients: clone(entry.ingredients), usageCount: currentSaved?.usageCount || 0 };
           const savedIndex = state.savedMeals.findIndex(meal => meal.id === savedMeal.id);
           if (savedIndex >= 0) state.savedMeals[savedIndex] = savedMeal; else state.savedMeals.push(savedMeal);
           entry.savedMealId = savedMeal.id;
@@ -298,6 +309,7 @@
         saveState(); closeModal(); renderToday();
         toast(saveToSavedMeals ? (existing ? 'Meal and saved copy updated' : 'Meal added and saved') : (existing ? 'Meal updated' : 'Meal added'));
       };
+      function syncDraft() { draft.description = document.getElementById('food-text').value; draft.protein = num(document.getElementById('meal-protein').value); draft.calories = num(document.getElementById('meal-calories').value); if (root.querySelectorAll('.ingredient-row').length) draft.ingredients = readIngredientRows(); }
     }
   }
 
@@ -305,43 +317,34 @@
   function openSavedModal(id = null) {
     lockPage();
     const existing = id ? state.savedMeals.find(m => m.id === id) : null;
-    let analyzed = existing ? normalizeExisting(existing) : null;
-    let mealEstimated = Boolean(existing?.estimated);
+    let draft = existing ? normalizeExisting(existing) : { name: '', description: '', category: 'breakfast', protein: 0, calories: 0, ingredients: [], manualTotals: { protein: false, calories: false }, usageCount: 0 };
+    let analyzedWithAI = false;
     renderBody();
     function renderBody() {
       modalRoot.innerHTML = `<div class="modal-backdrop"><div class="sheet"><div class="sheet-handle"></div><div class="sheet-head"><h2>${existing ? 'Edit saved meal' : 'New saved meal'}</h2><button class="close-button" id="close-saved">×</button></div><div id="saved-body"></div></div></div>`;
       document.getElementById('close-saved').onclick = closeModal;
       const body = document.getElementById('saved-body');
-      if (!analyzed) {
-        body.innerHTML = `<div class="field"><label>Meal description</label><textarea id="saved-description" placeholder="e.g. Huel Black, two scoops"></textarea></div><div class="field"><label>Usually added to</label><select id="saved-category">${mealOptions('breakfast')}</select></div><div id="saved-error"></div><div class="modal-actions single"><button class="primary-button" id="analyze-saved">Analyze</button></div>`;
-        document.getElementById('analyze-saved').onclick = async () => { const text = document.getElementById('saved-description').value.trim(), category = document.getElementById('saved-category').value; if (!text) return; try { const result = await analyzeFood(text, category); analyzed = { ...result, description: text, category, id: uid(), usageCount: 0 }; mealEstimated = false; renderBody(); } catch (err) { showInlineError('saved-error', err.message || 'Could not analyze that meal.'); } };
-      } else {
-        modalRoot._ingredients = analyzed.ingredients;
-        body.innerHTML = `<div class="field"><label>Name</label><input id="saved-name" value="${escapeAttr(analyzed.name || '')}" /></div><div class="field"><label>Default meal</label><select id="saved-category">${mealOptions(analyzed.category || 'breakfast')}</select></div><div class="macro-grid four"><div class="field"><label>Protein (g)</label><input id="saved-protein" type="number" step="0.1" min="0" value="${num(analyzed.protein)}" /></div><div class="field"><label>Carbs (g)</label><input id="saved-carbs" type="number" step="0.1" min="0" value="${num(analyzed.carbs)}" /></div><div class="field"><label>Fat (g)</label><input id="saved-fat" type="number" step="0.1" min="0" value="${num(analyzed.fat)}" /></div><div class="field"><label>Calories</label><input id="saved-calories" type="number" step="1" min="0" value="${num(analyzed.calories)}" /></div></div><div class="section-kicker">Ingredients</div><div class="ingredient-head"><span>Ingredient</span><span>Amount</span></div><div class="ingredient-list">${analyzed.ingredients.map((ing, i) => ingredientRowHtml(ing, i)).join('') || '<div class="meal-empty">No ingredient breakdown.</div>'}</div><div class="settings-help">Edit ingredient values and the totals above update automatically. You can still correct a total manually.</div>${estimatedToggleHtml(mealEstimated)}<div class="modal-actions">${existing ? '<button class="secondary-button danger" id="delete-saved">Delete</button>' : '<button class="secondary-button" id="back-saved">Back</button>'}<button class="primary-button" id="save-saved">Save</button></div>`;
-        body.querySelectorAll('.ingredient-row input').forEach(input => input.addEventListener('input', () => {
-          analyzed.ingredients = readIngredientRows();
-          analyzed = calculateFromIngredients(analyzed);
-          modalRoot._ingredients = analyzed.ingredients;
-          document.getElementById('saved-protein').value = roundMacro(analyzed.protein);
-          document.getElementById('saved-carbs').value = roundMacro(analyzed.carbs);
-          document.getElementById('saved-fat').value = roundMacro(analyzed.fat);
-          document.getElementById('saved-calories').value = Math.round(analyzed.calories);
-        }));
-        document.getElementById('meal-estimated').onchange = e => { mealEstimated = e.target.checked; };
-        const back = document.getElementById('back-saved'); if (back) back.onclick = () => { analyzed = null; renderBody(); };
-        const del = document.getElementById('delete-saved'); if (del) del.onclick = () => { state.savedMeals = state.savedMeals.filter(m => m.id !== existing.id); saveState(); closeModal(); renderSaved(); };
-        document.getElementById('save-saved').onclick = () => { const meal = { id: existing?.id || analyzed.id || uid(), name: document.getElementById('saved-name').value.trim() || 'Saved meal', description: analyzed.description || '', category: document.getElementById('saved-category').value, protein: num(document.getElementById('saved-protein').value), carbs: num(document.getElementById('saved-carbs').value), fat: num(document.getElementById('saved-fat').value), calories: num(document.getElementById('saved-calories').value), estimated: document.getElementById('meal-estimated').checked, ingredients: readIngredientRows(), usageCount: existing?.usageCount || analyzed.usageCount || 0 }; const idx = state.savedMeals.findIndex(m => m.id === meal.id); if (idx >= 0) state.savedMeals[idx] = meal; else state.savedMeals.push(meal); saveState(); closeModal(); renderSaved(); };
-      }
+      modalRoot._ingredients = draft.ingredients;
+      body.innerHTML = `<div class="field"><label>Name</label><input id="saved-name" placeholder="e.g. Huel Black, two scoops" value="${escapeAttr(draft.name || draft.description || '')}" /></div><div class="field"><label>Default meal</label><select id="saved-category">${mealOptions(draft.category || 'breakfast')}</select></div><div class="analysis-action"><button class="secondary-button" id="analyze-saved">Analyze with Claude</button><small>Optional</small></div><div id="saved-error"></div><div class="card total-editor"><div class="total-editor-head"><strong>${analyzedWithAI ? 'AI result' : 'Meal totals'}</strong><small>Edit either total directly</small></div><div class="macro-grid"><div class="field"><label>Protein (g)</label><input id="saved-protein" inputmode="decimal" placeholder="0" value="${draft.protein || draft.protein === 0 && existing ? escapeAttr(roundInput(draft.protein)) : ''}" /></div><div class="field"><label>Calories</label><input id="saved-calories" inputmode="decimal" placeholder="0" value="${draft.calories || draft.calories === 0 && existing ? escapeAttr(roundInput(draft.calories)) : ''}" /></div></div></div><div class="modal-actions">${existing ? '<button class="secondary-button danger" id="delete-saved">Delete</button>' : '<button class="secondary-button" id="cancel-saved">Cancel</button>'}<button class="primary-button" id="save-saved">Save</button></div>${draft.ingredients.length ? `<details class="ingredient-details"><summary>Ingredient details <span>${draft.ingredients.length}</span></summary><div class="ingredient-head"><span>Ingredient</span><span>Amount</span></div><div class="ingredient-list">${draft.ingredients.map((ing, i) => ingredientRowHtml(ing, i)).join('')}</div><div class="settings-help">Ingredient edits recalculate totals unless you have corrected a total manually.</div></details>` : ''}`;
+      document.getElementById('saved-name').oninput = e => { draft.name = e.target.value; draft.description = e.target.value; };
+      document.getElementById('saved-category').onchange = e => { draft.category = e.target.value; };
+      document.getElementById('saved-protein').oninput = e => { draft.protein = num(e.target.value); draft.manualTotals.protein = true; };
+      document.getElementById('saved-calories').oninput = e => { draft.calories = num(e.target.value); draft.manualTotals.calories = true; };
+      document.getElementById('analyze-saved').onclick = async () => { const text = document.getElementById('saved-name').value.trim(), category = document.getElementById('saved-category').value; if (!text) return showInlineError('saved-error', 'Enter a meal name first.'); const button = document.getElementById('analyze-saved'); button.disabled = true; button.textContent = 'Analyzing…'; try { const result = await analyzeFood(text, category); draft = { ...result, description: text, category, id: existing?.id || uid(), usageCount: existing?.usageCount || 0, manualTotals: { protein: false, calories: false } }; analyzedWithAI = true; renderBody(); } catch (err) { button.disabled = false; button.textContent = 'Analyze with Claude'; showInlineError('saved-error', err.message || 'Could not analyze that meal.'); } };
+      body.querySelectorAll('.ingredient-row input').forEach(input => input.addEventListener('input', () => { draft.ingredients = readIngredientRows(); draft = recalculateUnfixedTotals(draft); if (!draft.manualTotals.protein) document.getElementById('saved-protein').value = roundInput(draft.protein); if (!draft.manualTotals.calories) document.getElementById('saved-calories').value = roundInput(draft.calories); }));
+      const cancel = document.getElementById('cancel-saved'); if (cancel) cancel.onclick = closeModal;
+      const del = document.getElementById('delete-saved'); if (del) del.onclick = () => { state.savedMeals = state.savedMeals.filter(m => m.id !== existing.id); saveState(); closeModal(); renderSaved(); };
+      document.getElementById('save-saved').onclick = () => { const name = document.getElementById('saved-name').value.trim(); if (!name) return showInlineError('saved-error', 'Enter a meal name.'); if (!hasNumberInput('saved-protein') || !hasNumberInput('saved-calories')) return showInlineError('saved-error', 'Enter both protein and calories.'); const rows = body.querySelectorAll('.ingredient-row'); const meal = { id: existing?.id || draft.id || uid(), name, description: name, category: document.getElementById('saved-category').value, protein: num(document.getElementById('saved-protein').value), calories: num(document.getElementById('saved-calories').value), manualTotals: { ...draft.manualTotals }, ingredients: rows.length ? readIngredientRows() : clone(draft.ingredients), usageCount: existing?.usageCount || draft.usageCount || 0 }; const idx = state.savedMeals.findIndex(m => m.id === meal.id); if (idx >= 0) state.savedMeals[idx] = meal; else state.savedMeals.push(meal); saveState(); closeModal(); renderSaved(); };
     }
   }
 
-  function quickAdd(id) { const meal = state.savedMeals.find(m => m.id === id); if (!meal) return; meal.usageCount = (meal.usageCount || 0) + 1; getDay(selectedDate).entries.push({ id: uid(), category: meal.category, description: meal.description || meal.name, name: meal.name, protein: num(meal.protein), carbs: num(meal.carbs), fat: num(meal.fat), calories: num(meal.calories), estimated: Boolean(meal.estimated), ingredients: clone(meal.ingredients || []), source: 'saved', savedMealId: meal.id }); saveState(); renderToday(); toast(`${meal.name} added`); }
+  function quickAdd(id) { const meal = state.savedMeals.find(m => m.id === id); if (!meal) return; meal.usageCount = (meal.usageCount || 0) + 1; getDay(selectedDate).entries.push({ id: uid(), category: MEAL_TYPES.includes(meal.category) ? meal.category : 'snacks', description: meal.description || meal.name, name: meal.name, protein: num(meal.protein), calories: num(meal.calories), manualTotals: normalizeManualTotals(meal.manualTotals, true), ingredients: activeIngredients(meal.ingredients), source: 'saved', savedMealId: meal.id }); saveState(); renderToday(); toast(`${meal.name} added`); }
 
   async function analyzeFood(text, mealType) {
     const apiKey = (state.settings.claudeApiKey || '').trim();
     if (!apiKey) { const demo = localEstimate(text); if (demo) return demo; throw new Error('Add your Claude API key in Settings first.'); }
     if (!apiKey.startsWith('sk-ant-')) throw new Error('That does not look like an Anthropic API key. It should begin with sk-ant-.');
-    const system = `You are the nutrition analysis engine for a personal iPhone food tracker. The user may write in English or Danish. Estimate practical everyday nutrition, with protein primary and calories, carbohydrates and fat secondary. Use grams for ingredient amounts whenever possible; convert pieces, scoops and millilitres to an estimated edible gram weight. Preserve stated gram quantities and mark estimated=false; inferred or converted gram quantities are estimated=true. Return ONLY valid JSON exactly shaped as: {"name":"short meal name","protein":0,"carbs":0,"fat":0,"calories":0,"ingredients":[{"name":"ingredient","amount":0,"unit":"g","estimated":false,"proteinPer100g":0,"carbsPer100g":0,"fatPer100g":0,"caloriesPer100g":0}]}. Totals must equal the sum of amount/100 multiplied by each per-100g value (allowing normal rounding).`;
+    const system = `You are the nutrition analysis engine for a personal iPhone food tracker. The user may write in English or Danish. Estimate practical everyday nutrition with protein as the primary measurement and calories as the only secondary measurement. Use grams for ingredient amounts whenever possible; convert pieces, scoops and millilitres to a practical edible gram weight. Return ONLY valid JSON exactly shaped as: {"name":"short meal name","protein":0,"calories":0,"ingredients":[{"name":"ingredient","amount":0,"proteinPer100g":0,"caloriesPer100g":0}]}. Do not return any other nutrition fields. Totals should equal the sum of amount/100 multiplied by each per-100g value, allowing normal rounding.`;
     let response;
     try { response = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' }, body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 1400, temperature: 0, system, messages: [{ role: 'user', content: `Meal type: ${mealType}.\nFood: ${text}` }] }) }); } catch { throw new Error('Could not reach Claude. Check your internet connection and try again.'); }
     if (!response.ok) { let detail = ''; try { detail = (await response.json())?.error?.message || ''; } catch {} if (response.status === 401) throw new Error('Claude rejected the API key. Check the key in Settings.'); if (response.status === 429) throw new Error('Claude rate limit reached. Try again shortly.'); throw new Error(detail || `Claude API returned ${response.status}.`); }
@@ -352,19 +355,25 @@
 
   function normalizeAIResult(raw) {
     if (!raw || typeof raw !== 'object' || !Array.isArray(raw.ingredients)) return null;
-    const ingredients = raw.ingredients.map(i => ({ name: String(i.name || 'Ingredient'), amount: num(i.amount), unit: 'g', estimated: Boolean(i.estimated), proteinPer100g: num(i.proteinPer100g), carbsPer100g: num(i.carbsPer100g), fatPer100g: num(i.fatPer100g), caloriesPer100g: num(i.caloriesPer100g) }));
-    if (![raw.protein, raw.carbs, raw.fat, raw.calories].every(v => Number.isFinite(Number(v)))) return null;
-    return calculateFromIngredients({ name: String(raw.name || 'Meal'), protein: num(raw.protein), carbs: num(raw.carbs), fat: num(raw.fat), calories: num(raw.calories), ingredients });
+    const ingredients = activeIngredients(raw.ingredients);
+    if (![raw.protein, raw.calories].every(v => Number.isFinite(Number(v)))) return null;
+    return { name: String(raw.name || 'Meal'), protein: num(raw.protein), calories: num(raw.calories), ingredients };
   }
-  function normalizeExisting(item) { const source = clone(item), totalAmount = (source.ingredients || []).reduce((s, i) => s + num(i.amount), 0); return { ...source, protein: num(item.protein), carbs: num(item.carbs), fat: num(item.fat), calories: num(item.calories), estimated: Boolean(item.estimated), ingredients: (source.ingredients || []).map(i => ({ ...i, amount: num(i.amount), unit: i.unit || 'g', proteinPer100g: Number.isFinite(Number(i.proteinPer100g)) ? num(i.proteinPer100g) : (totalAmount ? num(item.protein) * 100 / totalAmount : 0), carbsPer100g: Number.isFinite(Number(i.carbsPer100g)) ? num(i.carbsPer100g) : (totalAmount ? num(item.carbs) * 100 / totalAmount : 0), fatPer100g: Number.isFinite(Number(i.fatPer100g)) ? num(i.fatPer100g) : (totalAmount ? num(item.fat) * 100 / totalAmount : 0), caloriesPer100g: Number.isFinite(Number(i.caloriesPer100g)) ? num(i.caloriesPer100g) : (totalAmount ? num(item.calories) * 100 / totalAmount : 0) })) }; }
-  function calculateFromIngredients(meal) { if (!meal.ingredients.length) return meal; return { ...meal, protein: meal.ingredients.reduce((s, i) => s + num(i.amount) * num(i.proteinPer100g) / 100, 0), carbs: meal.ingredients.reduce((s, i) => s + num(i.amount) * num(i.carbsPer100g) / 100, 0), fat: meal.ingredients.reduce((s, i) => s + num(i.amount) * num(i.fatPer100g) / 100, 0), calories: meal.ingredients.reduce((s, i) => s + num(i.amount) * num(i.caloriesPer100g) / 100, 0) }; }
-  function localEstimate(text) { const s = text.toLowerCase(); if (!s.includes('100g oats') && !s.includes('100 g oats')) return null; const ingredients = [{ name: 'Oats', amount: 100, unit: 'g', estimated: false, proteinPer100g: 13.2, carbsPer100g: 67.7, fatPer100g: 6.5, caloriesPer100g: 379 }, { name: 'Milk', amount: 258, unit: 'g', estimated: true, proteinPer100g: 3.4, carbsPer100g: 4.8, fatPer100g: 3.3, caloriesPer100g: 61 }]; return calculateFromIngredients({ name: 'Oats with milk', ingredients }); }
+  function normalizeExisting(item) {
+    const ingredients = activeIngredients(item?.ingredients);
+    const totalAmount = ingredients.reduce((sum, ingredient) => sum + num(ingredient.amount), 0);
+    const fallbackProtein = totalAmount ? num(item.protein) * 100 / totalAmount : 0;
+    const fallbackCalories = totalAmount ? num(item.calories) * 100 / totalAmount : 0;
+    return { id: item.id, name: item.name || item.description || 'Meal', description: item.description || item.name || '', category: MEAL_TYPES.includes(item.category) ? item.category : 'snacks', protein: num(item.protein), calories: num(item.calories), manualTotals: normalizeManualTotals(item.manualTotals, true), ingredients: ingredients.map(ingredient => ({ ...ingredient, proteinPer100g: ingredient.proteinPer100g != null && Number.isFinite(Number(ingredient.proteinPer100g)) ? num(ingredient.proteinPer100g) : fallbackProtein, caloriesPer100g: ingredient.caloriesPer100g != null && Number.isFinite(Number(ingredient.caloriesPer100g)) ? num(ingredient.caloriesPer100g) : fallbackCalories })), usageCount: num(item.usageCount), source: item.source, savedMealId: item.savedMealId };
+  }
+  function calculateFromIngredients(meal) { if (!meal.ingredients.length) return meal; return { ...meal, protein: meal.ingredients.reduce((s, i) => s + num(i.amount) * num(i.proteinPer100g) / 100, 0), calories: meal.ingredients.reduce((s, i) => s + num(i.amount) * num(i.caloriesPer100g) / 100, 0) }; }
+  function recalculateUnfixedTotals(meal) { const calculated = calculateFromIngredients(meal); return { ...meal, protein: meal.manualTotals?.protein ? meal.protein : calculated.protein, calories: meal.manualTotals?.calories ? meal.calories : calculated.calories };
+  }
+  function localEstimate(text) { const s = text.toLowerCase(); if (!s.includes('100g oats') && !s.includes('100 g oats')) return null; const ingredients = [{ name: 'Oats', amount: 100, proteinPer100g: 13.2, caloriesPer100g: 379 }, { name: 'Milk', amount: 258, proteinPer100g: 3.4, caloriesPer100g: 61 }]; return calculateFromIngredients({ name: 'Oats with milk', ingredients }); }
 
-  function ingredientRowHtml(ing, i) { return `<div class="ingredient-row"><input aria-label="Ingredient" data-ing-index="${i}" data-ing-field="name" value="${escapeAttr(ing.name || '')}" /><div class="amount-input"><input aria-label="Amount in grams" data-ing-index="${i}" data-ing-field="amount" inputmode="decimal" value="${escapeAttr(ing.amount ?? '')}" /><span>g</span></div><div class="ingredient-nutrients"><label><span>kcal /100g</span><input aria-label="Calories per 100 grams" data-ing-index="${i}" data-ing-field="caloriesPer100g" inputmode="decimal" value="${escapeAttr(ing.caloriesPer100g ?? 0)}" /></label><label><span>Protein /100g</span><input aria-label="Protein per 100 grams" data-ing-index="${i}" data-ing-field="proteinPer100g" inputmode="decimal" value="${escapeAttr(ing.proteinPer100g ?? 0)}" /></label><label><span>Carbs /100g</span><input aria-label="Carbs per 100 grams" data-ing-index="${i}" data-ing-field="carbsPer100g" inputmode="decimal" value="${escapeAttr(ing.carbsPer100g ?? 0)}" /></label><label><span>Fat /100g</span><input aria-label="Fat per 100 grams" data-ing-index="${i}" data-ing-field="fatPer100g" inputmode="decimal" value="${escapeAttr(ing.fatPer100g ?? 0)}" /></label></div></div>`; }
-  function mealSummaryHtml(meal) { return `<strong>~${roundMacro(meal.protein)} g protein</strong><span>~${roundMacro(meal.carbs)} g carbs · ~${roundMacro(meal.fat)} g fat · ~${Math.round(num(meal.calories))} kcal</span>`; }
-  function estimatedToggleHtml(checked) { return `<label class="estimated-toggle"><input id="meal-estimated" type="checkbox" ${checked ? 'checked' : ''}/><span class="mini-check">✓</span><span><strong>Estimated</strong><small>Mark uncertain meals such as canteen food</small></span></label>`; }
-  function saveToSavedToggleHtml(checked, updatesExisting) { return `<label class="estimated-toggle"><input id="save-to-saved" type="checkbox" ${checked ? 'checked' : ''}/><span class="mini-check">✓</span><span><strong>${updatesExisting ? 'Update Saved Meal' : 'Save to Saved Meals'}</strong><small>${updatesExisting ? 'Keep the reusable saved copy in sync' : 'Add this meal as a reusable Quick Add'}</small></span></label>`; }
-  function readIngredientRows() { return [...document.querySelectorAll('.ingredient-row')].map(row => { const old = {}; row.querySelectorAll('input').forEach(input => { const field = input.dataset.ingField; old[field] = field === 'name' ? input.value.trim() : num(input.value); }); const idx = Number(row.querySelector('input').dataset.ingIndex); const source = modalRoot._ingredients?.[idx] || {}; return { ...source, ...old, unit: 'g', estimated: source.estimated || false }; }); }
+  function ingredientRowHtml(ing, i) { return `<div class="ingredient-row"><input aria-label="Ingredient" data-ing-index="${i}" data-ing-field="name" value="${escapeAttr(ing.name || '')}" /><div class="amount-input"><input aria-label="Amount in grams" data-ing-index="${i}" data-ing-field="amount" inputmode="decimal" value="${escapeAttr(roundInput(ing.amount))}" /><span>g</span></div><div class="ingredient-nutrients"><label><span>Protein /100g</span><input aria-label="Protein per 100 grams" data-ing-index="${i}" data-ing-field="proteinPer100g" inputmode="decimal" value="${escapeAttr(roundInput(ing.proteinPer100g))}" /></label><label><span>kcal /100g</span><input aria-label="Calories per 100 grams" data-ing-index="${i}" data-ing-field="caloriesPer100g" inputmode="decimal" value="${escapeAttr(roundInput(ing.caloriesPer100g))}" /></label></div></div>`; }
+  function saveToSavedToggleHtml(checked, updatesExisting) { return `<label class="save-toggle"><input id="save-to-saved" type="checkbox" ${checked ? 'checked' : ''}/><span class="mini-check">✓</span><span><strong>${updatesExisting ? 'Update Saved Meal' : 'Save to Saved Meals'}</strong><small>${updatesExisting ? 'Keep the reusable saved copy in sync' : 'Add this meal as a reusable Quick Add'}</small></span></label>`; }
+  function readIngredientRows() { return [...document.querySelectorAll('.ingredient-row')].map(row => { const values = {}; row.querySelectorAll('input').forEach(input => { const field = input.dataset.ingField; values[field] = field === 'name' ? input.value.trim() : num(input.value); }); return { name: values.name || 'Ingredient', amount: num(values.amount), proteinPer100g: num(values.proteinPer100g), caloriesPer100g: num(values.caloriesPer100g) }; }); }
   function mealOptions(selected) { return MEAL_TYPES.map(t => `<option value="${t}" ${t === selected ? 'selected' : ''}>${MEAL_LABELS[t]}</option>`).join(''); }
   function hasWeight(day) { return Boolean(day) && Number.isFinite(Number(day.weightKg)) && Number(day.weightKg) > 0; }
   function averageNumbers(values) { const valid = values.map(Number).filter(Number.isFinite); return valid.length ? valid.reduce((sum, value) => sum + value, 0) / valid.length : null; }
@@ -379,15 +388,19 @@
   function yesNo(value) { return value ? 'yes' : 'no'; }
   function csvCell(value) { const text = String(value ?? ''); return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text; }
   function getDay(date) { if (!state.days[date]) state.days[date] = { date, entries: [] }; if (!Array.isArray(state.days[date].entries)) state.days[date].entries = []; return state.days[date]; }
-  function dayTotals(day) { const entries = Array.isArray(day?.entries) ? day.entries : []; return { protein: sum(entries, 'protein'), carbs: sum(entries, 'carbs'), fat: sum(entries, 'fat'), calories: sum(entries, 'calories') }; }
-  function sevenDayProteinAverage(endDate) { let total = 0; for (let i = 0; i < 7; i++) total += dayTotals(state.days[shiftDate(endDate, -i)] || { entries: [] }).protein; return total / 7; }
+  function dayTotals(day) { const entries = Array.isArray(day?.entries) ? day.entries : []; return { protein: sum(entries, 'protein'), calories: sum(entries, 'calories') }; }
+  function sevenDayNutritionAverage(endDate) { const loggedDays = Array.from({ length: 7 }, (_, i) => state.days[shiftDate(endDate, -i)]).filter(day => Array.isArray(day?.entries) && day.entries.length); return { count: loggedDays.length, protein: averageNumbers(loggedDays.map(day => dayTotals(day).protein)) || 0, calories: averageNumbers(loggedDays.map(day => dayTotals(day).calories)) || 0 }; }
   function sum(items, field) { return items.reduce((s, x) => s + num(x[field]), 0); }
   function num(v) { const normalized = typeof v === 'string' ? v.trim().replace(/\s/g, '').replace(',', '.') : v; const n = Number(normalized); return Number.isFinite(n) ? n : 0; }
   function uid() { return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`; }
   function clone(v) { return JSON.parse(JSON.stringify(v)); }
   function mealCopySnapshot(meal) {
-    return { name: meal.name || meal.description || 'Meal', description: meal.description || '', category: MEAL_TYPES.includes(meal.category) ? meal.category : 'snacks', protein: num(meal.protein), carbs: num(meal.carbs), fat: num(meal.fat), calories: num(meal.calories), estimated: Boolean(meal.estimated), ingredients: clone(Array.isArray(meal.ingredients) ? meal.ingredients : []), source: 'copy' };
+    return { name: meal.name || meal.description || 'Meal', description: meal.description || '', category: MEAL_TYPES.includes(meal.category) ? meal.category : 'snacks', protein: num(meal.protein), calories: num(meal.calories), manualTotals: normalizeManualTotals(meal.manualTotals, true), ingredients: activeIngredients(meal.ingredients), source: 'copy' };
   }
+  function activeIngredients(ingredients) { return (Array.isArray(ingredients) ? ingredients : []).map(item => ({ name: String(item?.name || 'Ingredient'), amount: num(item?.amount), proteinPer100g: Number.isFinite(Number(item?.proteinPer100g)) ? num(item.proteinPer100g) : null, caloriesPer100g: Number.isFinite(Number(item?.caloriesPer100g)) ? num(item.caloriesPer100g) : null })); }
+  function normalizeManualTotals(value, legacyFallback = false) { return { protein: typeof value?.protein === 'boolean' ? value.protein : legacyFallback, calories: typeof value?.calories === 'boolean' ? value.calories : legacyFallback }; }
+  function hasNumberInput(id) { const value = document.getElementById(id)?.value.trim().replace(',', '.'); return value !== '' && Number.isFinite(Number(value)) && Number(value) >= 0; }
+  function roundInput(value) { const n = num(value); return Math.round(n * 100) / 100; }
   function applyTheme() { const choice = state.settings.theme || 'system'; const resolved = choice === 'system' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : choice; document.documentElement.dataset.theme = resolved; const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = resolved === 'dark' ? '#111312' : '#f5f5f7'; }
   function lockPage() { if (document.body.classList.contains('modal-open')) return; lockedScrollY = window.scrollY; document.body.style.top = `-${lockedScrollY}px`; document.body.classList.add('modal-open'); }
   function closeModal() { modalRoot.innerHTML = ''; document.body.classList.remove('modal-open'); document.body.style.top = ''; window.scrollTo(0, lockedScrollY); }
