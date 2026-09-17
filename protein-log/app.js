@@ -8,6 +8,7 @@
   let activeTab = 'today';
   let selectedDate = localDateKey(new Date());
   let selectedWeekStart = weekStartKey(selectedDate);
+  let quickAddOpen = false;
   let touchStart = null;
   let lockedScrollY = 0;
   const app = document.getElementById('app');
@@ -18,6 +19,7 @@
 
   function init() {
     applyTheme();
+    document.addEventListener('focusin', selectNumericInputContent);
     const colorScheme = window.matchMedia('(prefers-color-scheme: dark)');
     const syncSystemTheme = () => { if ((state.settings.theme || 'system') === 'system') applyTheme(); };
     if (colorScheme.addEventListener) colorScheme.addEventListener('change', syncSystemTheme);
@@ -80,7 +82,7 @@
       <div class="card progress-card"><div class="progress-ring" style="--progress:${Math.round(pct * 360)}deg"><div class="ring-content"><div class="ring-number">${roundMacro(totals.protein)} g</div><div class="ring-target">protein eaten</div><div class="ring-consumed">Target ${roundMacro(proteinTarget)} g</div><div class="over-target ${totals.protein >= targetLow && totals.protein <= targetHigh ? 'in-range' : ''}">${proteinStatus}</div></div></div><div class="top-stats single-stat"><div><strong>${Math.round(totals.calories).toLocaleString()}</strong><span>kcal recorded · ${Math.round(calorieTarget).toLocaleString()} kcal guide</span></div></div><div class="average-stat">${average.count ? `<strong>${roundMacro(average.protein)} g</strong> average recorded protein · ${average.count} logged day${average.count === 1 ? '' : 's'} · last 7 days` : 'No recorded meals in the last 7 days'}</div><div class="weight-average">${renderWeightAverage(weightTrend)}</div></div>
       ${state.copiedMeal ? `<div class="card copied-meal-card"><div class="copied-meal-heading"><div><small>Copied meal</small><strong>${escapeHtml(state.copiedMeal.name)}</strong></div><button class="close-button" id="clear-copied-meal" aria-label="Clear copied meal">×</button></div><div class="copy-controls"><select id="paste-category" aria-label="Paste meal section">${mealOptions(state.copiedMeal.category)}</select><button class="primary-button" id="paste-meal">Paste meal</button></div><div class="copy-footer"><span>To: ${escapeHtml(isToday ? 'Today' : formatDate(selectedDate))}</span>${isToday ? '' : '<button class="copy-today" id="copy-go-today">Go to today</button>'}</div></div>` : ''}
       ${MEAL_TYPES.map(type => renderMealSection(type, day)).join('')}
-      ${quick.length ? `<div class="quick-wrap"><div class="section-kicker">Quick add</div><div class="quick-row">${quick.map(m => `<button class="quick-add" data-quick-id="${m.id}"><span class="quick-add-name">${escapeHtml(m.name)}</span><span class="quick-add-macro">${roundMacro(m.protein)} g protein · ${Math.round(num(m.calories))} kcal</span></button>`).join('')}</div></div>` : ''}
+      ${quick.length ? `<div class="quick-wrap"><button class="card quick-add-toggle" id="quick-add-toggle" aria-expanded="${quickAddOpen}"><span>Quick add a meal</span><span aria-hidden="true">${quickAddOpen ? '−' : '+'}</span></button>${quickAddOpen ? `<div class="quick-row">${quick.map(m => `<button class="quick-add" data-quick-id="${m.id}"><span class="quick-add-name">${escapeHtml(m.name)}</span><span class="quick-add-macro">${roundMacro(m.protein)} g protein · ${Math.round(num(m.calories))} kcal</span></button>`).join('')}</div>` : ''}</div>` : ''}
       <label class="card creatine-row"><input id="creatine" type="checkbox" ${day.creatine ? 'checked' : ''}/><span class="checkmark">✓</span><span><strong>Creatine</strong><small>Mark as taken today</small></span></label>
       <div class="card activity-card"><div class="activity-head"><strong>Activity</strong><small>Optional markers for this day</small></div><div class="activity-grid">${activityToggle('strength', 'Strength workout', activities.strength)}${activityToggle('run', 'Run', activities.run)}${activityToggle('longBike', 'Longer bike ride', activities.longBike)}</div></div>
       <div class="card weight-card"><div><strong>Morning body weight</strong><small>${hasWeight(day) ? `${formatWeight(day.weightKg)} kg logged for this day` : 'Optional daily weigh-in'}</small></div><div class="weight-controls"><div class="weight-input"><input id="morning-weight" aria-label="Morning body weight in kilograms" type="number" inputmode="decimal" min="1" step="0.1" placeholder="82.7" value="${hasWeight(day) ? escapeAttr(day.weightKg) : ''}" /><span>kg</span></div><button class="secondary-button" id="save-weight">Save</button>${hasWeight(day) ? '<button class="weight-delete" id="delete-weight" aria-label="Delete morning weight">×</button>' : ''}</div></div>
@@ -94,11 +96,14 @@
     document.querySelectorAll('[data-activity]').forEach(input => input.onchange = () => { day.activities = { ...(day.activities || {}), [input.dataset.activity]: input.checked }; saveState(); });
     document.querySelectorAll('[data-add-meal]').forEach(btn => btn.onclick = () => openFoodModal(btn.dataset.addMeal));
     document.querySelectorAll('[data-entry-id]').forEach(btn => btn.onclick = () => openExistingEntry(btn.dataset.entryId));
+    const quickToggle = document.getElementById('quick-add-toggle');
+    if (quickToggle) quickToggle.onclick = () => { quickAddOpen = !quickAddOpen; renderToday(); };
     document.querySelectorAll('[data-quick-id]').forEach(btn => btn.onclick = () => quickAdd(btn.dataset.quickId));
     const pasteMeal = document.getElementById('paste-meal');
     if (pasteMeal) pasteMeal.onclick = () => {
       const category = document.getElementById('paste-category').value;
       getDay(selectedDate).entries.push({ ...mealCopySnapshot(state.copiedMeal), id: uid(), category });
+      state.copiedMeal = null;
       saveState(); renderToday(); toast('Meal pasted');
     };
     const clearCopy = document.getElementById('clear-copied-meal');
@@ -348,7 +353,7 @@
     }
   }
 
-  function quickAdd(id) { const meal = state.savedMeals.find(m => m.id === id); if (!meal) return; meal.usageCount = (meal.usageCount || 0) + 1; getDay(selectedDate).entries.push({ id: uid(), category: MEAL_TYPES.includes(meal.category) ? meal.category : 'snacks', description: meal.description || meal.name, name: meal.name, protein: num(meal.protein), calories: num(meal.calories), manualTotals: normalizeManualTotals(meal.manualTotals, true), ...(meal.manualWeightG != null ? { manualWeightG: num(meal.manualWeightG) } : {}), ...(meal.per100Totals ? { per100Totals: { ...meal.per100Totals } } : {}), ingredients: activeIngredients(meal.ingredients), source: 'saved', savedMealId: meal.id }); saveState(); renderToday(); toast(`${meal.name} added`); }
+  function quickAdd(id) { const meal = state.savedMeals.find(m => m.id === id); if (!meal) return; meal.usageCount = (meal.usageCount || 0) + 1; getDay(selectedDate).entries.push({ id: uid(), category: MEAL_TYPES.includes(meal.category) ? meal.category : 'snacks', description: meal.description || meal.name, name: meal.name, protein: num(meal.protein), calories: num(meal.calories), manualTotals: normalizeManualTotals(meal.manualTotals, true), ...(meal.manualWeightG != null ? { manualWeightG: num(meal.manualWeightG) } : {}), ...(meal.per100Totals ? { per100Totals: { ...meal.per100Totals } } : {}), ingredients: activeIngredients(meal.ingredients), source: 'saved', savedMealId: meal.id }); quickAddOpen = false; saveState(); renderToday(); toast(`${meal.name} added`); }
 
   async function analyzeFood(text, mealType) {
     const apiKey = (state.settings.claudeApiKey || '').trim();
@@ -426,6 +431,7 @@
   function normalizeManualTotals(value, legacyFallback = false) { return { protein: typeof value?.protein === 'boolean' ? value.protein : legacyFallback, calories: typeof value?.calories === 'boolean' ? value.calories : legacyFallback }; }
   function hasNumberInput(id) { const value = document.getElementById(id)?.value.trim().replace(',', '.'); return value !== '' && Number.isFinite(Number(value)) && Number(value) >= 0; }
   function roundInput(value) { const n = num(value); return Math.round(n * 100) / 100; }
+  function selectNumericInputContent(event) { const input = event.target; if (!(input instanceof HTMLInputElement) || !input.matches('[inputmode="decimal"],[inputmode="numeric"],input[type="number"]') || !input.value) return; const selectAll = () => { if (document.activeElement === input) input.select(); }; selectAll(); setTimeout(selectAll, 0); }
   function applyTheme() { const choice = state.settings.theme || 'system'; const resolved = choice === 'system' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : choice; document.documentElement.dataset.theme = resolved; const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = resolved === 'dark' ? '#111312' : '#f5f5f7'; }
   function lockPage() { if (document.body.classList.contains('modal-open')) return; lockedScrollY = window.scrollY; document.body.style.top = `-${lockedScrollY}px`; document.body.classList.add('modal-open'); }
   function closeModal() { modalRoot.innerHTML = ''; document.body.classList.remove('modal-open'); document.body.style.top = ''; window.scrollTo(0, lockedScrollY); }
