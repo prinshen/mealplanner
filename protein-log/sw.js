@@ -1,6 +1,6 @@
 const PREFIX = 'protein-log-';
-const CACHE = PREFIX + 'v17.5';
-const ASSETS = ['./', './index.html', './styles.css?v=17.5', './app.js?v=17.5', './manifest.webmanifest', './icon.svg'];
+const CACHE = PREFIX + 'v18.0';
+const ASSETS = ['./', './index.html', './styles.css?v=18.0', './app.js?v=18.0', './manifest.webmanifest', './icon.svg'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting()));
 });
