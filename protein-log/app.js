@@ -321,6 +321,11 @@
     const quality = meal.quality || (meal.source === 'manual' ? 'manual' : '');
     return quality ? `<small class="meal-quality">${quality === 'manual' ? 'Manual' : 'Edited'}</small>` : '';
   }
+  function ingredientEditFingerprint(ingredients) {
+    // Compare the editable nutrition/identity fields, never portion sizes.
+    // Match the displayed precision so saving a rounded AI value is not an edit.
+    return JSON.stringify(ingredients.map(i => [String(i.name || '').trim(), roundInput(i.proteinPer100g), roundInput(i.caloriesPer100g)]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));
+  }
   function mealFingerprint(meal) {
     const ingredients = activeIngredients(meal.ingredients).map(i => [i.name.trim().toLowerCase(), i.amount, i.proteinPer100g, i.caloriesPer100g]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
     return JSON.stringify([String(meal.name || meal.description || 'Meal').trim().toLowerCase(), num(meal.protein), num(meal.calories), num(meal.manualWeightG), ingredients]);
@@ -387,8 +392,8 @@
     let analyzedWithAI = originalMeal?.source === 'ai';
     let nameEdited = Boolean(originalMeal);
     let quality = originalMeal?.quality || (originalMeal?.source === 'manual' ? 'manual' : '');
-    let ingredientBaseline = JSON.stringify(draft.ingredients);
-    const markIngredientEdit = () => { if (JSON.stringify(draft.ingredients) !== ingredientBaseline && quality !== 'manual') quality = 'edited'; };
+    let ingredientBaseline = ingredientEditFingerprint(draft.ingredients);
+    const markIngredientEdit = () => { if (ingredientEditFingerprint(draft.ingredients) !== ingredientBaseline && quality !== 'manual') quality = 'edited'; };
     let entryMode = originalMeal ? 'ingredients' : 'choice';
     modalRoot.innerHTML = `<div class="modal-backdrop"><div class="sheet"><div class="sheet-handle"></div><div class="sheet-head"><h2>${existing ? 'Edit meal' : `Add ${MEAL_LABELS[category]}`}</h2><button class="close-button" id="close-sheet">×</button></div><div id="food-editor"></div></div></div>`;
     document.getElementById('close-sheet').onclick = closeModal;
@@ -409,10 +414,10 @@
         const text = document.getElementById('food-text').value.trim() || document.getElementById('meal-name').value.trim();
         if (!text) return showInlineError('food-error', 'Enter a meal name or description first.');
         const button = document.getElementById('analyze-food'); button.disabled = true; button.textContent = 'Analyzing…';
-        try { const result = await analyzeFood(text, category); draft = prepareIngredientEditor({ ...result, name: nameEdited && draft.name.trim() ? draft.name.trim() : result.name, description: text, manualTotals: { protein: false, calories: false } }); analyzedWithAI = true; quality = ''; ingredientBaseline = JSON.stringify(draft.ingredients); entryMode = 'analyzed'; renderFoodEditor(); }
+        try { const result = await analyzeFood(text, category); draft = prepareIngredientEditor({ ...result, name: nameEdited && draft.name.trim() ? draft.name.trim() : result.name, description: text, manualTotals: { protein: false, calories: false } }); analyzedWithAI = true; quality = ''; ingredientBaseline = ingredientEditFingerprint(draft.ingredients); entryMode = 'analyzed'; renderFoodEditor(); }
         catch (err) { button.disabled = false; button.textContent = 'Analyze with Claude'; showInlineError('food-error', err.message || 'Could not analyze that meal.'); }
       };
-      const manualButton = document.getElementById('manual-food'); if (manualButton) manualButton.onclick = () => { draft = prepareIngredientEditor({ ...draft, description: document.getElementById('food-text').value, ingredients: [blankIngredient()], manualTotals: { protein: false, calories: false } }); quality = 'manual'; ingredientBaseline = JSON.stringify(draft.ingredients); entryMode = 'manual'; renderFoodEditor(); };
+      const manualButton = document.getElementById('manual-food'); if (manualButton) manualButton.onclick = () => { draft = prepareIngredientEditor({ ...draft, description: document.getElementById('food-text').value, ingredients: [blankIngredient()], manualTotals: { protein: false, calories: false } }); quality = 'manual'; ingredientBaseline = ingredientEditFingerprint(draft.ingredients); entryMode = 'manual'; renderFoodEditor(); };
       const cancel = document.getElementById('cancel-entry'); if (cancel) cancel.onclick = closeModal;
       if (!showNutrition) return;
       document.getElementById('add-food-ingredient').onclick = () => { syncDraft(); draft.ingredients.push(blankIngredient()); markIngredientEdit(); renderFoodEditor(); };
