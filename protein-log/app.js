@@ -9,6 +9,8 @@
   let selectedDate = localDateKey(new Date());
   let selectedWeekStart = weekStartKey(selectedDate);
   let averagePeriod = 7;
+  let reviewPeriod = 7;
+  let selectedTrendEnd = selectedDate;
   let swipeAnimating = false;
   let touchStart = null;
   let lockedScrollY = 0;
@@ -59,13 +61,7 @@
     const proteinTarget = Number(state.settings.proteinTarget) || 160;
     const calorieTarget = Math.max(1, Number(state.settings.calorieTarget) || 2500);
     const pct = Math.min(1, totals.protein / proteinTarget);
-    const targetLow = proteinTarget * .85;
-    const targetHigh = proteinTarget * 1.15;
-    const proteinStatus = totals.protein >= targetLow && totals.protein <= targetHigh
-      ? 'Within target range'
-      : totals.protein < targetLow
-        ? `${roundMacro(Math.max(0, proteinTarget - totals.protein))} g to target`
-        : `${roundMacro(totals.protein - targetHigh)} g above target range`;
+    const proteinRemaining = Math.max(0, proteinTarget - totals.protein);
     const today = localDateKey(new Date());
     const isToday = date === today;
     const canNext = date < today;
@@ -74,7 +70,7 @@
     const activities = day.activities || {};
     const html = `<section class="day-view">
       <div class="date-nav"><button class="date-button" id="prev-day" aria-label="Previous day">‹</button><div class="date-center"><label class="date-click-target" for="date-picker"><div class="date-label">${escapeHtml(isToday ? 'Today' : formatDate(date))}</div><div class="date-sub">${escapeHtml(formatLongDate(date))}</div></label><input class="date-picker" id="date-picker" type="date" max="${today}" value="${date}" /></div><button class="date-button" id="next-day" aria-label="Next day" ${canNext ? '' : 'disabled'}>›</button></div>
-      <div class="card progress-card"><div class="progress-ring" style="--progress:${Math.round(pct * 360)}deg;--protein-color:${proteinColor(totals.protein)}"><div class="ring-content"><div class="ring-number">${roundMacro(totals.protein)} g</div><div class="ring-target">protein eaten</div><div class="ring-consumed">Target ${roundMacro(proteinTarget)} g</div><div class="over-target ${totals.protein >= targetLow && totals.protein <= targetHigh ? 'in-range' : ''}">${proteinStatus}</div></div></div><div class="calorie-summary"><div><strong>${Math.round(totals.calories).toLocaleString()} kcal</strong><span>/ ${Math.round(calorieTarget).toLocaleString()} kcal</span></div><progress class="calorie-bar" aria-label="Calories toward daily target" max="${calorieTarget}" value="${Math.min(calorieTarget, totals.calories)}"></progress></div><div class="average-selector" aria-label="Average period"><button data-average-period="7" aria-pressed="${averagePeriod === 7}">7 days</button><button data-average-period="30" aria-pressed="${averagePeriod === 30}">30 days</button></div><div class="average-stat">${average.count ? `<strong>${roundMacro(average.protein)} g protein · ${Math.round(average.calories)} kcal</strong> average recorded intake<br>${average.count} logged day${average.count === 1 ? '' : 's'} · last ${averagePeriod} days` : `No recorded meals in the last ${averagePeriod} days`}</div><div class="weight-average">${renderWeightAverage(weightTrend, averagePeriod)}</div></div>
+      <div class="card progress-card"><div class="progress-ring" style="--progress:${Math.round(pct * 360)}deg;--protein-color:${proteinColor(totals.protein, proteinTarget)}"><div class="ring-content"><div class="ring-consumed">${roundMacro(totals.protein)} g eaten</div><div class="ring-number">${roundMacro(proteinRemaining)} g</div><div class="ring-target">protein left</div><div class="ring-consumed">Target ${roundMacro(proteinTarget)} g</div></div></div><div class="calorie-summary"><div><strong>${Math.round(totals.calories).toLocaleString()} kcal</strong><span>/ ${Math.round(calorieTarget).toLocaleString()} kcal</span></div><progress class="calorie-bar" aria-label="Calories toward daily target" max="${calorieTarget}" value="${Math.min(calorieTarget, totals.calories)}"></progress></div><div class="average-selector" aria-label="Average period"><button data-average-period="7" aria-pressed="${averagePeriod === 7}">7 days</button><button data-average-period="30" aria-pressed="${averagePeriod === 30}">30 days</button></div><div class="average-stat">${average.count ? `<strong>${roundMacro(average.protein)} g protein · ${Math.round(average.calories)} kcal</strong> average recorded intake<br>${average.count} logged day${average.count === 1 ? '' : 's'} · last ${averagePeriod} days` : `No recorded meals in the last ${averagePeriod} days`}</div><div class="weight-average">${renderWeightAverage(weightTrend, averagePeriod)}</div></div>
       ${!hasWeight(day) ? weightCardHtml(day) : ''}
       ${!day.creatine ? creatineCardHtml(day) : ''}
       ${state.copiedMeal ? `<div class="card copied-meal-card"><div class="copied-meal-heading"><div><small>Copied meal</small><strong>${escapeHtml(state.copiedMeal.name)}</strong></div><button class="close-button" id="clear-copied-meal" aria-label="Clear copied meal">×</button></div><div class="copy-controls"><select id="paste-category" aria-label="Paste meal section">${mealOptions(state.copiedMeal.category)}</select><button class="primary-button" id="paste-meal">Paste meal</button></div><div class="copy-footer"><span>To: ${escapeHtml(isToday ? 'Today' : formatDate(date))}</span>${isToday ? '' : '<button class="copy-today" id="copy-go-today">Go to today</button>'}</div></div>` : ''}
@@ -115,11 +111,12 @@
     activeTab = 'today';
     document.querySelectorAll('.tab-button').forEach(button => button.classList.toggle('active', button.dataset.tab === 'today'));
   }
-  function proteinColor(value) {
+  function proteinColor(value, target = 160) {
     const grams = Math.max(0, num(value));
-    if (grams < 100) return 'hsl(0, 74%, 48%)';
-    const hue = grams <= 130 ? (grams - 100) * 2 : 60 + Math.min(30, grams - 130) * 2.8;
-    return `hsl(${Math.round(hue)}, 74%, ${grams > 130 ? 48 - Math.min(30, grams - 130) / 3 : 48}%)`;
+    if (grams < 100) return '#b56a62';
+    if (grams >= num(target) * .85) return '#237a52';
+    if (grams < 130) return '#b28b52';
+    return '#b1a35c';
   }
   function weightCardHtml(day) {
     return `<div class="card weight-card"><div><strong>Morning body weight</strong><small>${hasWeight(day) ? `${formatWeight(day.weightKg)} kg logged for this day` : 'Optional daily weigh-in'}</small></div><div class="weight-controls"><div class="weight-input"><input id="morning-weight" aria-label="Morning body weight in kilograms" inputmode="decimal" placeholder="82,7" value="${hasWeight(day) ? escapeAttr(day.weightKg) : ''}" /><span>kg</span></div><button class="secondary-button" id="save-weight">Save</button>${hasWeight(day) ? '<button class="weight-delete" id="delete-weight" aria-label="Delete morning weight">×</button>' : ''}</div></div>`;
@@ -203,33 +200,38 @@
   }
 
   function renderWeekly() {
-    const report = buildWeeklyReport(selectedWeekStart);
+    const start = reviewPeriod === 7 ? selectedWeekStart : shiftDate(selectedTrendEnd, -29);
+    const report = buildWeeklyReport(start, reviewPeriod);
+    const comparison = reviewPeriod === 7 ? 'previous week' : 'previous 30 days';
     const s = report.summary;
     app.innerHTML = `<section class="weekly-view">
-      <div class="page-head"><div><h1>Weekly review</h1><div class="date-sub">${escapeHtml(report.dateRange)}</div></div></div>
-      <div class="week-nav"><button class="date-button" id="prev-week" aria-label="Previous week">‹</button><label class="week-picker-label" for="week-picker"><strong>${escapeHtml(formatWeekLabel(selectedWeekStart))}</strong><span>Select week</span></label><input id="week-picker" class="week-picker" type="date" value="${selectedWeekStart}"/><button class="date-button" id="next-week" aria-label="Next week">›</button></div>
+      <div class="page-head"><div><h1>Trends</h1><div class="date-sub">${escapeHtml(report.dateRange)}</div></div></div>
+      <div class="average-selector review-selector" aria-label="Trend period"><button id="review-7" aria-pressed="${reviewPeriod === 7}">7 days</button><button id="review-30" aria-pressed="${reviewPeriod === 30}">30 days</button></div>
+      <div class="week-nav"><button class="date-button" id="prev-week" aria-label="Previous period">‹</button><label class="week-picker-label" for="week-picker"><strong>${reviewPeriod === 7 ? escapeHtml(formatWeekLabel(selectedWeekStart)) : '30 days ending ' + escapeHtml(formatShortDay(selectedTrendEnd))}</strong><span>${reviewPeriod === 7 ? 'Select week' : 'Select end date'}</span></label><input id="week-picker" class="week-picker" type="date" value="${reviewPeriod === 7 ? selectedWeekStart : selectedTrendEnd}"/><button class="date-button" id="next-week" aria-label="Next period">›</button></div>
       <div class="weekly-grid">
-        <div class="card metric-card primary-metric"><span>Average morning weight</span><strong>${s.averageWeightKg == null ? '—' : `${formatWeight(s.averageWeightKg)} kg`}</strong><small>${s.weightEntries} weigh-in${s.weightEntries === 1 ? '' : 's'}${s.weightChangeKg == null ? '' : ` · ${signedWeight(s.weightChangeKg)} kg vs previous week`}</small></div>
+        <div class="card metric-card primary-metric"><span>Average morning weight</span><strong>${s.averageWeightKg == null ? '—' : `${formatWeight(s.averageWeightKg)} kg`}</strong><small>${s.weightEntries} weigh-in${s.weightEntries === 1 ? '' : 's'}${s.weightChangeKg == null ? '' : ` · ${signedWeight(s.weightChangeKg)} kg vs ${comparison}`}</small></div>
         <div class="card metric-card"><span>Average recorded protein</span><strong>${s.loggedNutritionDays ? `${roundMacro(s.averageProteinG)} g` : '—'}</strong><small>${s.loggedNutritionDays} logged day${s.loggedNutritionDays === 1 ? '' : 's'}</small></div>
         <div class="card metric-card"><span>Average recorded calories</span><strong>${s.loggedNutritionDays ? Math.round(s.averageCalories).toLocaleString() : '—'}</strong><small>${s.loggedNutritionDays ? 'kcal / logged day' : 'No meals logged'}</small></div>
         <div class="card metric-card"><span>Workouts</span><strong>${s.strengthWorkouts + s.runs + s.longBikeRides}</strong><small>${s.strengthWorkouts} strength · ${s.runs} run · ${s.longBikeRides} bike</small></div>
-        <div class="card metric-card"><span>Creatine</span><strong>${s.creatineDays}/7</strong><small>days taken</small></div>
+        <div class="card metric-card"><span>Creatine</span><strong>${s.creatineDays}/${reviewPeriod}</strong><small>days taken</small></div>
       </div>
-      <div class="card trend-card"><div class="trend-head"><strong>Weight trend</strong><small>Morning weigh-ins · weekly changes matter more than daily noise</small></div>${weightTrendSvg(report.days)}</div>
+      <div class="card trend-card"><div class="trend-head"><strong>Weight trend</strong><small>Morning weigh-ins · longer-term changes matter more than daily noise</small></div>${weightTrendSvg(report.days)}</div>
       <div class="section-kicker">Daily overview</div>
       <div class="card daily-review">${report.days.map(d => `<div class="daily-review-row"><div><strong>${escapeHtml(formatShortDay(d.date))}</strong><small>${d.weightKg == null ? 'No weigh-in' : `${formatWeight(d.weightKg)} kg`}</small></div><div class="daily-review-macros"><strong>${d.hasNutrition ? `${roundMacro(d.proteinG)} g protein` : 'No meals logged'}</strong><small>${d.hasNutrition ? `${Math.round(d.calories)} kcal recorded` : '—'}</small></div></div>`).join('')}</div>
-      <div class="section-kicker">Export this week</div>
+      <div class="section-kicker">Export ${reviewPeriod === 7 ? 'this week' : 'these 30 days'}</div>
       <div class="card export-card"><div><strong>Full nutrition + weight report</strong><small>Includes daily data, activities, creatine, meals and ingredient-level detail.</small></div><div class="export-actions"><button class="primary-button" id="export-csv">Export CSV</button><button class="secondary-button" id="export-json">Export JSON</button></div></div>
     </section>`;
-    document.getElementById('prev-week').onclick = () => { selectedWeekStart = shiftDate(selectedWeekStart, -7); renderWeekly(); };
-    document.getElementById('next-week').onclick = () => { selectedWeekStart = shiftDate(selectedWeekStart, 7); renderWeekly(); };
-    document.getElementById('week-picker').onchange = e => { if (e.target.value) { selectedWeekStart = weekStartKey(e.target.value); renderWeekly(); } };
+    document.getElementById('review-7').onclick = () => { reviewPeriod = 7; renderWeekly(); };
+    document.getElementById('review-30').onclick = () => { reviewPeriod = 30; renderWeekly(); };
+    document.getElementById('prev-week').onclick = () => { if (reviewPeriod === 7) selectedWeekStart = shiftDate(selectedWeekStart, -7); else selectedTrendEnd = shiftDate(selectedTrendEnd, -30); renderWeekly(); };
+    document.getElementById('next-week').onclick = () => { if (reviewPeriod === 7) selectedWeekStart = shiftDate(selectedWeekStart, 7); else selectedTrendEnd = shiftDate(selectedTrendEnd, 30); renderWeekly(); };
+    document.getElementById('week-picker').onchange = e => { if (e.target.value) { if (reviewPeriod === 7) selectedWeekStart = weekStartKey(e.target.value); else selectedTrendEnd = e.target.value; renderWeekly(); } };
     document.getElementById('export-csv').onclick = () => exportWeeklyReport(report, 'csv');
     document.getElementById('export-json').onclick = () => exportWeeklyReport(report, 'json');
   }
 
-  function buildWeeklyReport(startDate) {
-    const dates = weekDates(startDate);
+  function buildWeeklyReport(startDate, period = 7) {
+    const dates = Array.from({ length: period }, (_, i) => shiftDate(startDate, i));
     const days = dates.map(date => {
       const source = state.days[date] || { date, entries: [] };
       const totals = dayTotals(source);
@@ -238,7 +240,7 @@
       return { date, weightKg: hasWeight(source) ? Number(source.weightKg) : null, hasNutrition: entries.length > 0, calories: totals.calories, proteinG: totals.protein, creatine: Boolean(source.creatine), strengthWorkout: Boolean(activities.strength), run: Boolean(activities.run), longBikeRide: Boolean(activities.longBike), meals: entries.map(entry => ({ id: entry.id, section: MEAL_LABELS[entry.category] || entry.category || '', name: entry.name || entry.description || 'Meal', description: entry.description || '', calories: num(entry.calories), proteinG: num(entry.protein), manualWeightG: entry.manualWeightG != null ? num(entry.manualWeightG) : null, ingredients: activeIngredients(entry.ingredients) })) };
     });
     const weights = days.map(d => d.weightKg).filter(v => v != null);
-    const previousWeights = weekDates(shiftDate(startDate, -7)).map(date => state.days[date]).filter(hasWeight).map(day => Number(day.weightKg));
+    const previousWeights = Array.from({ length: period }, (_, i) => shiftDate(startDate, -period + i)).map(date => state.days[date]).filter(hasWeight).map(day => Number(day.weightKg));
     const averageWeightKg = averageNumbers(weights);
     const previousAverageWeightKg = averageNumbers(previousWeights);
     const loggedDays = days.filter(d => d.hasNutrition);
@@ -255,7 +257,7 @@
       longBikeRides: days.filter(d => d.longBikeRide).length,
       creatineDays: days.filter(d => d.creatine).length
     };
-    return { weekStart: startDate, weekEnd: dates[6], dateRange: `${formatLongDate(startDate)} – ${formatLongDate(dates[6])}`, summary, days };
+    return { periodDays: period, weekStart: startDate, weekEnd: dates[period - 1], dateRange: `${formatLongDate(startDate)} – ${formatLongDate(dates[period - 1])}`, summary, days };
   }
 
   function rollingWeightSummary(endDate, period = 7) {
@@ -272,11 +274,11 @@
 
   function weightTrendSvg(days) {
     const values = days.map((d, i) => d.weightKg == null ? null : { i, value: d.weightKg }).filter(Boolean);
-    if (!values.length) return '<div class="trend-empty">No morning weigh-ins logged this week.</div>';
+    if (!values.length) return '<div class="trend-empty">No morning weigh-ins logged in this period.</div>';
     const min = Math.min(...values.map(p => p.value)), max = Math.max(...values.map(p => p.value)), range = max - min;
-    const points = values.map(p => ({ ...p, x: 12 + p.i * 46, y: range ? 48 - ((p.value - min) / range) * 34 : 31 }));
+    const points = values.map(p => ({ ...p, x: 12 + p.i * 276 / Math.max(1, days.length - 1), y: range ? 48 - ((p.value - min) / range) * 34 : 31 }));
     const line = points.map(p => `${p.x},${p.y}`).join(' ');
-    return `<svg class="weight-chart" viewBox="0 0 300 72" role="img" aria-label="Weight trend for the selected week"><polyline class="trend-line" points="${line}"/>${points.map(p => `<circle class="trend-dot" cx="${p.x}" cy="${p.y}" r="3"><title>${formatWeight(p.value)} kg</title></circle>`).join('')}${days.map((d, i) => `<text x="${12 + i * 46}" y="68">${escapeHtml(formatWeekdayLetter(d.date))}</text>`).join('')}</svg>`;
+    return `<svg class="weight-chart" viewBox="0 0 300 72" role="img" aria-label="Weight trend for the selected period"><polyline class="trend-line" points="${line}"/>${points.map(p => `<circle class="trend-dot" cx="${p.x}" cy="${p.y}" r="3"><title>${formatWeight(p.value)} kg</title></circle>`).join('')}${days.map((d, i) => days.length > 7 && i !== days.length - 1 && (i % 7 !== 0 || i > days.length - 4) ? '' : `<text x="${12 + i * 276 / Math.max(1, days.length - 1)}" y="68">${escapeHtml(days.length <= 7 ? formatWeekdayLetter(d.date) : String(parseLocalDate(d.date).getDate()))}</text>`).join('')}</svg>`;
   }
 
   async function exportWeeklyReport(report, format) {
@@ -304,13 +306,14 @@
         });
       });
     });
-    return [columns.join(','), ...rows.map(row => columns.map(column => csvCell(row[column] ?? '')).join(','))].join('\n');
+    const headers = report.periodDays === 30 ? columns.map(column => column.replace(/^week_/, 'period_').replace(/^weekly_/, 'period_').replace('previous_week', 'previous_30_days').replace('out_of_7', 'out_of_30')) : columns;
+    return [headers.join(','), ...rows.map(row => columns.map(column => csvCell(row[column] ?? '')).join(','))].join('\n');
   }
 
   async function shareOrDownload(content, mimeType, filename) {
     const file = typeof File !== 'undefined' ? new File([content], filename, { type: mimeType }) : null;
     if (file && navigator.share && navigator.canShare?.({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: 'Protein Log weekly report' }); return; }
+      try { await navigator.share({ files: [file], title: 'Protein Log nutrition report' }); return; }
       catch (err) { if (err?.name === 'AbortError') return; }
     }
     const url = URL.createObjectURL(new Blob([content], { type: mimeType }));
@@ -455,7 +458,7 @@
     const apiKey = (state.settings.claudeApiKey || '').trim();
     if (!apiKey) { const demo = localEstimate(text); if (demo) return demo; throw new Error('Add your Claude API key in Settings first.'); }
     if (!apiKey.startsWith('sk-ant-')) throw new Error('That does not look like an Anthropic API key. It should begin with sk-ant-.');
-    const system = `You are the nutrition analysis engine for a personal iPhone food tracker. The user may write in English or Danish. Estimate practical everyday nutrition with protein as the primary measurement and calories as the only secondary measurement. Use grams for ingredient amounts whenever possible; convert pieces, scoops and millilitres to a practical edible gram weight. Return ONLY valid JSON exactly shaped as: {"name":"short meal name","protein":0,"calories":0,"ingredients":[{"name":"ingredient","amount":0,"proteinPer100g":0,"caloriesPer100g":0}]}. Do not return any other nutrition fields. Totals should equal the sum of amount/100 multiplied by each per-100g value, allowing normal rounding.`;
+    const system = `You are the nutrition analysis engine for a personal iPhone food tracker. The user may write in English or Danish. Estimate practical everyday nutrition with protein as the primary measurement and calories as the only secondary measurement. Explicit quantities are constraints, not a total meal budget. A weight directly before an ingredient belongs to that ingredient alone, even when other foods follow with "and", "with", "og" or "med". Keep every stated ingredient weight exactly; estimate sensible portions independently only for ingredients with no stated amount. Example: "200g of chicken and cabbage with bread" means chicken amount=200, plus an estimated cabbage portion and an estimated bread portion; NEVER divide the 200g among chicken, cabbage and bread. Danish example: "200 g kylling med kål og brød" also fixes chicken at 200 g. Only distribute a weight across a mixed dish when the user explicitly describes a total, combined weight or a serving of that mixed dish (for example "200g in total of chicken, cabbage and bread" or "200g chicken and cabbage stew"). Preserve separate weights such as "200g chicken and 50g bread". Do not shrink stated weights to fit typical portions or calorie assumptions. Use grams for ingredient amounts whenever possible; convert pieces, scoops and millilitres to a practical edible gram weight. Return ONLY valid JSON exactly shaped as: {"name":"short meal name","protein":0,"calories":0,"ingredients":[{"name":"ingredient","amount":0,"proteinPer100g":0,"caloriesPer100g":0}]}. Do not return any other nutrition fields. Totals should equal the sum of amount/100 multiplied by each per-100g value, allowing normal rounding.`;
     let response;
     try { response = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' }, body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 1400, temperature: 0, system, messages: [{ role: 'user', content: `Meal type: ${mealType}.\nFood: ${text}` }] }) }); } catch { throw new Error('Could not reach Claude. Check your internet connection and try again.'); }
     if (!response.ok) { let detail = ''; try { detail = (await response.json())?.error?.message || ''; } catch {} if (response.status === 401) throw new Error('Claude rejected the API key. Check the key in Settings.'); if (response.status === 429) throw new Error('Claude rate limit reached. Try again shortly.'); throw new Error(detail || `Claude API returned ${response.status}.`); }
