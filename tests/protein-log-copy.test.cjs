@@ -220,6 +220,33 @@ assert.equal(corrected.protein, 31);
 assert.equal(corrected.calories, 420);
 assert.equal(edited.api.state.savedMeals[0].name, 'Pancakes');
 assert.equal(edited.api.state.savedMeals[0].protein, 18.75);
+// Quantity changes still recalculate totals, but do not indicate corrected nutrition.
+function changeIngredientFields(changes, quality = '') {
+  const initial = JSON.parse(JSON.stringify(fixture));
+  initial.days['2026-08-19'].entries[0].quality = quality;
+  const portion = boot(initial);
+  portion.api.setDate('2026-08-19');
+  let handler;
+  const fields = { name: 'Pancakes', amount: '200', proteinPer100g: '12,5', caloriesPer100g: '192', ...changes };
+  const fieldsInputs = Object.entries(fields).map(([ingField, value]) => ({ dataset: { ingField }, value, addEventListener(_, fn) { handler = fn; } }));
+  const ingredientRow = { querySelectorAll() { return fieldsInputs; } };
+  portion.node('food-editor').querySelectorAll = selector => selector === '.ingredient-row input' ? fieldsInputs : selector === '.ingredient-row' ? [ingredientRow] : [];
+  portion.setRows([ingredientRow]);
+  portion.api.openExistingEntry('original');
+  handler();
+  portion.node('save-entry').onclick();
+  return portion.api.state.days['2026-08-19'].entries[0];
+}
+const portionOnly = changeIngredientFields({});
+assert.equal(portionOnly.quality, '', 'quantity-only changes do not add Edited');
+assert.equal(portionOnly.protein, 25);
+assert.equal(portionOnly.calories, 384);
+assert.equal(changeIngredientFields({ proteinPer100g: '15' }).quality, 'edited', 'protein corrections add Edited');
+assert.equal(changeIngredientFields({ caloriesPer100g: '210' }).quality, 'edited', 'calorie corrections add Edited');
+assert.equal(changeIngredientFields({ name: 'Protein pancakes' }).quality, 'edited', 'changing an ingredient adds Edited');
+assert.equal(changeIngredientFields({}, 'edited').quality, 'edited', 'resizing a corrected meal retains its badge');
+assert.equal(changeIngredientFields({}, 'manual').quality, 'manual', 'resizing a manual meal retains Manual');
+
 const swipe = boot(fixture);
 swipe.api.setDate('2026-08-19');
 const currentView = { style: {} }, adjacentView = { style: {}, querySelectorAll() { return []; }, setAttribute() {}, remove() {} };
