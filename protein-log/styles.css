@@ -19,3 +19,4 @@ html[data-theme=dark] .calorie-summary span,html[data-theme=dark] .library-ingre
 @media(prefers-reduced-motion:reduce){.day-view,.day-preview{transition:none!important}}
 
 .review-selector{width:max-content;margin:0 auto 10px}.ring-content .ring-consumed{margin:4px 0;font-size:11px}.ring-content .ring-target{font-size:13px}
+.library-section .section-kicker,.meal-suggestions .section-kicker{font-size:12px;font-weight:750}.meal-suggestions .library-meal{padding:10px 13px;gap:4px;margin:8px 0}.meal-suggestions .library-title strong{font-size:15px}.meal-suggestions .library-macros{font-size:12px}
