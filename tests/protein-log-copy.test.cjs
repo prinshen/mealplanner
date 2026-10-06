@@ -20,7 +20,7 @@ function boot(initial) {
   }
   function element(id) {
     if (nodes.has(id)) return nodes.get(id);
-    const node = { value: '', checked: false, disabled: false, textContent: '', style: {}, classList: { add() {}, remove() {}, contains() { return false; } }, querySelectorAll() { return []; }, insertAdjacentHTML(_, html) { parse(html); } };
+    const node = { value: '', checked: false, disabled: false, textContent: '', style: {}, classList: { add() {}, remove() {}, contains() { return false; } }, querySelectorAll() { return []; }, insertAdjacentHTML(position, html) { this.innerHTML = position === 'afterbegin' ? html + this.innerHTML : this.innerHTML + html; } };
     Object.defineProperty(node, 'innerHTML', { get() { return node.html || ''; }, set(html) { node.html = html; parse(html); } });
     nodes.set(id, node); return node;
   }
@@ -30,7 +30,7 @@ function boot(initial) {
   const context = { document, localStorage: { getItem() { return stored; }, setItem(_, value) { stored = value; } }, window: { scrollY: 0, scrollTo() {}, matchMedia() { return { matches: false }; } }, performance: { now() { return 100; } }, crypto: { randomUUID() { return `new-${++nextId}`; } }, setTimeout(fn) { timers.push(fn); }, Intl, Date };
   vm.createContext(context);
   const instrumented = source.replace('  init();', '  globalThis.api = { state, renderToday, renderWeekly, openFoodModal, openExistingEntry, mealCopySnapshot, mealLibrary, mealFingerprint, mealBadge, nutritionAverage, rollingWeightSummary, proteinColor, normalizeAIResult, prepareIngredientEditor, calculateFromIngredients, sevenDayNutritionAverage, buildWeeklyReport, weeklyCsv, navigateDayBySwipe, startDaySwipe, moveDaySwipe, finishDaySwipe, getDate() { return selectedDate; }, setDate(date) { selectedDate = date; }, setWeek(date) { selectedWeekStart = date; } };');
-  vm.runInContext(instrumented, context);
+  vm.runInContext(instrumented.replace('state, renderToday,', 'state, libraryResultsHtml, renderSaved, renderToday,'), context);
   return { api: context.api, node: element, stored: () => JSON.parse(stored), setRows(rows) { ingredientRows = rows; }, document, flushTimers() { while (timers.length) timers.shift()(); } };
 }
 
@@ -168,9 +168,45 @@ variants.api.state.days['2026-08-20'] = { entries: [
   { ...JSON.parse(JSON.stringify(original)), id: 'variant', ingredients: [{ ...legacyIngredient, amount: 200 }], protein: 25, calories: 384, quality: 'edited' }
 ] };
 const library = variants.api.mealLibrary('pancakes');
-assert.equal(library.length, 2, 'same name with different contents stays separate; exact repeats group');
-assert.equal(library.find(x => x.count === 2).meal.protein, 18.75);
-assert.equal(variants.api.mealLibrary('milk').length, 2, 'search includes descriptions');
+assert.equal(library.length, 1, 'portion changes group with the same recipe');
+assert.equal(library[0].count, 3, 'all logged portions count, saved templates do not double count');
+assert.equal(library[0].meal.protein, 25, 'latest portion is offered for reuse');
+assert.equal(variants.api.mealLibrary('milk').length, 1, 'search includes descriptions');
+const originalHistory = JSON.stringify(variants.api.state.days);
+variants.api.state.days['2026-08-21'] = { entries: [
+  { ...JSON.parse(JSON.stringify(original)), id: 'renamed', name: 'My favourite breakfast', ingredients: [{ ...legacyIngredient, amount: 250 }], protein: 31.25, calories: 480 },
+  { ...JSON.parse(JSON.stringify(original)), id: 'new-protein', ingredients: [{ ...legacyIngredient, proteinPer100g: 7 }] },
+  { ...JSON.parse(JSON.stringify(original)), id: 'new-calories', ingredients: [{ ...legacyIngredient, caloriesPer100g: 210 }] },
+  { ...JSON.parse(JSON.stringify(original)), id: 'lunch', category: 'lunch' },
+  { ...JSON.parse(JSON.stringify(original)), id: 'dinner', category: 'dinner' }
+] };
+const popular = variants.api.mealLibrary('', 'breakfast');
+assert.equal(popular.length, 3, 'nutrition changes create distinct recipes');
+assert.equal(popular[0].count, 4, 'quantity and title changes share popularity');
+assert.equal(popular[0].meal.name, 'My favourite breakfast', 'latest name is retained');
+assert.equal(variants.api.mealLibrary('pancakes', 'breakfast')[0].count, 4, 'old names remain searchable');
+assert.equal(variants.api.mealLibrary('', 'lunch')[0].count, 1, 'usage is counted within the meal section');
+const groupedHtml = variants.api.libraryResultsHtml(variants.api.mealLibrary());
+assert.ok(groupedHtml.indexOf('>Breakfast</h2>') < groupedHtml.indexOf('>Lunch</h2>'));
+assert.ok(groupedHtml.indexOf('>Lunch</h2>') < groupedHtml.indexOf('>Dinner</h2>'));
+assert.ok(groupedHtml.indexOf('>Dinner</h2>') < groupedHtml.indexOf('>Snacks</h2>'));
+const snapshot = JSON.stringify(variants.api.state);
+variants.api.setDate('2026-08-22');
+const suggestionButton = { dataset: { libraryIndex: '0' } };
+variants.node('food-editor').querySelectorAll = selector => selector === '[data-library-index]' ? [suggestionButton] : [];
+variants.api.openFoodModal('breakfast');
+assert.match(variants.node('food-editor').innerHTML, /Most used for breakfast/);
+assert.equal(JSON.stringify(variants.api.state), snapshot, 'opening suggestions does not modify history');
+suggestionButton.onclick();
+assert.equal(variants.node('meal-name').value, 'My favourite breakfast');
+assert.match(variants.node('food-editor').innerHTML, /Ingredients/);
+assert.ok(!/Most used for/.test(variants.node('food-editor').innerHTML), 'choosing a suggestion opens its editable ingredients');
+variants.node('meal-name').value = 'Breakfast today';
+variants.node('save-entry').onclick();
+const suggestedCopy = variants.api.state.days['2026-08-22'].entries[0];
+suggestedCopy.ingredients[0].amount = 999;
+assert.equal(variants.api.state.days['2026-08-21'].entries[0].ingredients[0].amount, 250, 'suggestions are independent copies');
+assert.equal(JSON.stringify(Object.fromEntries(Object.entries(variants.api.state.days).filter(([date]) => date <= '2026-08-20'))), originalHistory, 'library grouping leaves earlier history unchanged');
 assert.match(variants.api.mealBadge({ quality: 'edited' }), /Edited/);
 assert.match(variants.api.mealBadge({ source: 'manual' }), /Manual/);
 assert.equal(variants.api.mealBadge(original), '', 'legacy estimates are not marked edited without evidence');
