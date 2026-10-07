@@ -357,18 +357,19 @@
     return [...variants.values()].filter(item => terms.every(term => item.searchText.includes(term)))
       .sort((a, b) => b.count - a.count || b.date.localeCompare(a.date) || String(a.meal.name || '').localeCompare(String(b.meal.name || '')));
   }
-  function libraryResultsHtml(items, grouped = true) {
+  function libraryResultsHtml(items, grouped = true, expanded = false) {
     if (!items.length) return '<div class="empty-card">No matching meals yet.</div>';
     const card = (item, index) => `<button class="card library-meal" data-library-index="${index}"><span class="library-title"><strong>${escapeHtml(item.meal.name || item.meal.description || 'Meal')}</strong>${mealBadge(item.meal)}</span><span class="library-ingredients">${escapeHtml((item.meal.ingredients || []).map(i => `${roundInput(i.amount)} g ${i.name}`).join(' · ') || item.meal.description || '')}</span><span class="library-macros">${roundMacro(item.meal.protein)} g protein · ${Math.round(num(item.meal.calories))} kcal</span><small>${item.date ? `Used ${item.count} time${item.count === 1 ? '' : 's'} · Last logged ${escapeHtml(formatLongDate(item.date))}` : 'Previously saved meal'}</small></button>`;
     if (!grouped) return items.map(card).join('');
     return MEAL_TYPES.map(category => {
       const cards = items.map((item, index) => item.meal.category === category ? card(item, index) : '').join('');
-      return cards ? `<section class="library-section"><h2 class="section-kicker">${MEAL_LABELS[category]}</h2>${cards}</section>` : '';
+      const count = items.filter(item => item.meal.category === category).length;
+      return cards ? `<details class="library-section"${expanded ? ' open' : ''}><summary><span>${MEAL_LABELS[category]}</span><small>${count} meal${count === 1 ? '' : 's'}</small><span class="library-chevron" aria-hidden="true">⌄</span></summary>${cards}</details>` : '';
     }).join('');
   }
   function bindLibraryResults(query, container, choose) {
     const items = mealLibrary(query);
-    container.innerHTML = libraryResultsHtml(items);
+    container.innerHTML = libraryResultsHtml(items, true, Boolean(query.trim()));
     container.querySelectorAll('[data-library-index]').forEach(button => button.onclick = () => choose(clone(items[Number(button.dataset.libraryIndex)].meal)));
   }
   function renderSaved() {
@@ -423,7 +424,7 @@
       if (entryMode === 'choice') {
         const suggestions = mealLibrary('', category).slice(0, 3);
         if (suggestions.length) {
-          root.insertAdjacentHTML('afterbegin', `<div class="meal-suggestions"><h3 class="section-kicker">Most used for ${MEAL_LABELS[category].toLowerCase()}</h3><div class="settings-help">Choose a meal, then adjust quantities.</div>${libraryResultsHtml(suggestions, false)}</div>`);
+          root.insertAdjacentHTML('beforeend', `<div class="meal-suggestions"><h3 class="section-kicker">Most used for ${MEAL_LABELS[category].toLowerCase()}</h3><div class="settings-help">Choose a meal, then adjust quantities.</div>${libraryResultsHtml(suggestions, false)}</div>`);
           root.querySelectorAll('[data-library-index]').forEach(button => button.onclick = () => openFoodModal(category, null, clone(suggestions[Number(button.dataset.libraryIndex)].meal)));
         }
       }
