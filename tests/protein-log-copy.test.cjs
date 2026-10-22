@@ -5,7 +5,10 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '../protein-
 
 // Exercise the real app logic and event handlers without touching browser storage.
 function boot(initial) {
-  let stored = JSON.stringify(initial), nextId = 0;
+  let nextId = 0;
+  const storage = new Map([['proteinLog.v1', JSON.stringify(initial)]]);
+  const alerts = [];
+  const storageControl = { failKey: null };
   const nodes = new Map();
   function parse(html) {
     for (const match of html.matchAll(/<(\w+)\b([^>]*\bid="([^"]+)"[^>]*)>([\s\S]*?)(?=<\/\1>|$)/g)) {
@@ -27,11 +30,11 @@ function boot(initial) {
   let ingredientRows = [];
   const document = { getElementById: element, querySelectorAll(selector) { return selector === '.ingredient-row' ? ingredientRows : []; }, body: element('body') };
   const timers = [];
-  const context = { document, localStorage: { getItem() { return stored; }, setItem(_, value) { stored = value; } }, window: { scrollY: 0, scrollTo() {}, matchMedia() { return { matches: false }; } }, performance: { now() { return 100; } }, crypto: { randomUUID() { return `new-${++nextId}`; } }, setTimeout(fn) { timers.push(fn); }, Intl, Date };
+  const context = { document, localStorage: { getItem(key) { return storage.get(key) ?? null; }, setItem(key, value) { if (storageControl.failKey === key) throw new Error('Storage full'); storage.set(key, value); } }, window: { alert(message) { alerts.push(message); }, confirm() { return false; }, scrollY: 0, scrollTo() {}, matchMedia() { return { matches: false }; } }, performance: { now() { return 100; } }, crypto: { randomUUID() { return `new-${++nextId}`; } }, setTimeout(fn) { timers.push(fn); }, Intl, Date };
   vm.createContext(context);
   const instrumented = source.replace('  init();', '  globalThis.api = { state, renderToday, renderWeekly, openFoodModal, openExistingEntry, mealCopySnapshot, mealLibrary, mealFingerprint, mealBadge, nutritionAverage, rollingWeightSummary, proteinColor, normalizeAIResult, prepareIngredientEditor, calculateFromIngredients, sevenDayNutritionAverage, buildWeeklyReport, weeklyCsv, navigateDayBySwipe, startDaySwipe, moveDaySwipe, finishDaySwipe, getDate() { return selectedDate; }, setDate(date) { selectedDate = date; }, setWeek(date) { selectedWeekStart = date; } };');
-  vm.runInContext(instrumented.replace('state, renderToday,', 'state, libraryResultsHtml, renderSaved, renderToday,'), context);
-  return { api: context.api, node: element, stored: () => JSON.parse(stored), setRows(rows) { ingredientRows = rows; }, document, flushTimers() { while (timers.length) timers.shift()(); } };
+  vm.runInContext(instrumented.replace('state, renderToday,', 'state, loadState, saveState, fullBackup, readBackup, restoreData, confirmRestore, validateStoredData, reportExportStatus, reportSignature, reportKey, exportWeeklyReport, exportWeekOptions, renderSettings, libraryResultsHtml, renderSaved, renderToday,'), context);
+  return { api: context.api, node: element, stored: () => JSON.parse(storage.get('proteinLog.v1')), storage, storageControl, alerts, context, setRows(rows) { ingredientRows = rows; }, document, flushTimers() { while (timers.length) timers.shift()(); } };
 }
 
 const legacyIngredient = { name: 'Pancakes', amount: 150, unit: 'g', proteinPer100g: 12.5, carbsPer100g: 22, fatPer100g: 6, caloriesPer100g: 192, estimated: true };
@@ -349,5 +352,6 @@ assert.equal((trends.node('app').innerHTML.match(/class="daily-review-row"/g) ||
 assert.equal(trends.api.proteinColor(90), '#b56a62');
 assert.equal(trends.api.proteinColor(140), '#237a52');
 assert.match(source, /chicken amount=200/);
+module.exports = { boot, fixture };
 assert.match(source, /NEVER divide the 200g among chicken, cabbage and bread/);
 console.log('PASS: independent meals, quantity-only edits, copy/paste, 7\/30-day reports and exports, remaining protein ring, prompt weight constraints and swipe gestures.');
