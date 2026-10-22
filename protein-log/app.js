@@ -2,6 +2,10 @@
   'use strict';
 
   const STORAGE_KEY = 'proteinLog.v1';
+  const RECOVERY_KEY = STORAGE_KEY + '.recovery';
+  const RESTORE_RECOVERY_KEY = STORAGE_KEY + '.beforeRestore';
+  let storageBlocked = false;
+  let storageWarning = '';
   const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snacks'];
   const MEAL_LABELS = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snacks: 'Snacks' };
   const state = loadState();
@@ -39,19 +43,137 @@
     app.addEventListener('click', e => { if (swipeAnimating || touchStart?.horizontal) { e.preventDefault(); e.stopPropagation(); } }, true);
     if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js').catch(() => {});
     render();
+    if (storageWarning) window.alert(storageWarning);
   }
 
   function defaultState() { return { settings: { proteinTarget: 160, calorieTarget: 2500, theme: 'system', claudeApiKey: '' }, days: {}, savedMeals: [], copiedMeal: null }; }
   function navigateDayBySwipe(dx, dy) { if (Math.abs(dx) < 55 || Math.abs(dx) < Math.abs(dy) * 1.25) return false; const today = localDateKey(new Date()); if (dx > 0) selectedDate = shiftDate(selectedDate, -1); else if (selectedDate < today) selectedDate = shiftDate(selectedDate, 1); else return false; renderToday(); return true; }
   function loadState() {
     try {
-      const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-      if (!parsed) return defaultState();
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw == null) {
+        if (localStorage.getItem(RECOVERY_KEY) || localStorage.getItem(RESTORE_RECOVERY_KEY)) throw new Error('Primary data missing');
+        return defaultState();
+      }
+      const parsed = JSON.parse(raw);
+      validateStoredData(parsed);
       const base = defaultState();
-      return { settings: { ...base.settings, ...(parsed.settings || {}) }, days: parsed.days || {}, savedMeals: Array.isArray(parsed.savedMeals) ? parsed.savedMeals : [], copiedMeal: parsed.copiedMeal && typeof parsed.copiedMeal.name === 'string' && Array.isArray(parsed.copiedMeal.ingredients) ? mealCopySnapshot(parsed.copiedMeal) : null };
-    } catch { return defaultState(); }
+      return { ...parsed, settings: { ...base.settings, ...(parsed.settings || {}) }, days: parsed.days || {}, savedMeals: Array.isArray(parsed.savedMeals) ? parsed.savedMeals : [], copiedMeal: parsed.copiedMeal && typeof parsed.copiedMeal.name === 'string' && Array.isArray(parsed.copiedMeal.ingredients) ? mealCopySnapshot(parsed.copiedMeal) : null };
+    } catch {
+      storageBlocked = true;
+      storageWarning = 'Your saved data could not be read. Nothing has been overwritten. Open Settings to restore a backup or local recovery copy. New changes cannot be saved until recovery.';
+      return defaultState();
+    }
   }
-  function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  function saveState() {
+    if (storageBlocked) { window.alert(storageWarning); throw new Error('Storage needs recovery'); }
+    try {
+      const previous = localStorage.getItem(STORAGE_KEY);
+      const next = JSON.stringify(state);
+      if (previous && previous !== next) {
+        validateStoredData(JSON.parse(previous));
+        // Recovery is best effort; lack of extra space must not prevent a primary save.
+        try { localStorage.setItem(RECOVERY_KEY, previous); } catch (_) {}
+      }
+      localStorage.setItem(STORAGE_KEY, next);
+    } catch (error) {
+      window.alert('This change could not be saved. Do not close the app: download a full backup in Settings now. Your previously saved data has not been cleared.');
+      throw error;
+    }
+  }
+
+  function validateStoredData(data) {
+    const object = value => value && typeof value === 'object' && !Array.isArray(value);
+    const fail = () => { throw new Error('This is not a valid full Protein Log backup. No data was changed.'); };
+    const safeKeys = value => { if (!value || typeof value !== 'object') return; Object.keys(value).forEach(key => { if (['__proto__', 'constructor', 'prototype'].includes(key)) fail(); safeKeys(value[key]); }); };
+    safeKeys(data);
+    if (!object(data) || !object(data.days) || !object(data.settings) || !Array.isArray(data.savedMeals)) fail();
+    const numeric = (value) => value == null || ((typeof value === 'number' || typeof value === 'string') && String(value).trim() !== '' && Number.isFinite(Number(String(value).replace(',', '.'))) && Number(String(value).replace(',', '.')) >= 0);
+    const meal = value => {
+      if (!object(value)) fail();
+      ['name', 'description', 'category', 'id', 'quality', 'source'].forEach(key => { if (value[key] != null && typeof value[key] !== 'string') fail(); });
+      ['protein', 'calories', 'manualWeightG'].forEach(key => { if (!numeric(value[key])) fail(); });
+      if (value.ingredients != null) {
+        if (!Array.isArray(value.ingredients)) fail();
+        value.ingredients.forEach(i => { if (!object(i) || typeof i.name !== 'string' || !['amount', 'proteinPer100g', 'caloriesPer100g'].every(key => numeric(i[key]))) fail(); });
+      }
+      ['per100Totals', 'manualTotals'].forEach(key => { if (value[key] != null && !object(value[key])) fail(); });
+      if (value.per100Totals && !['protein', 'calories'].every(key => numeric(value.per100Totals[key]))) fail();
+      if (value.manualTotals && ['protein', 'calories'].some(key => value.manualTotals[key] != null && typeof value.manualTotals[key] !== 'boolean')) fail();
+    };
+    Object.entries(data.days).forEach(([date, day]) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date || !object(day) || !Array.isArray(day.entries) || !numeric(day.weightKg)) fail();
+      if (day.creatine != null && typeof day.creatine !== 'boolean') fail();
+      if (day.activities != null && (!object(day.activities) || ['strength', 'run', 'longBike'].some(key => day.activities[key] != null && typeof day.activities[key] !== 'boolean'))) fail();
+      day.entries.forEach(meal);
+    });
+    data.savedMeals.forEach(meal);
+    if (data.copiedMeal != null) meal(data.copiedMeal);
+    ['proteinTarget', 'calorieTarget'].forEach(key => { if (!numeric(data.settings[key])) fail(); });
+    if (data.settings.claudeApiKey != null && typeof data.settings.claudeApiKey !== 'string') fail();
+    if (data.settings.theme != null && !['system', 'light', 'dark'].includes(data.settings.theme)) fail();
+    if (data.reportExports != null) {
+      if (!object(data.reportExports)) fail();
+      Object.values(data.reportExports).forEach(record => { if (!object(record) || typeof record.signature !== 'string' || !['csv', 'json'].includes(record.format) || typeof record.at !== 'string' || !Number.isFinite(Date.parse(record.at))) fail(); });
+    }
+    if (data.lastBackupAt != null && (typeof data.lastBackupAt !== 'string' || !Number.isFinite(Date.parse(data.lastBackupAt)))) fail();
+    return data;
+  }
+
+  function fullBackup() {
+    const data = clone(state);
+    validateStoredData(data);
+    delete data.settings.claudeApiKey;
+    const createdAt = new Date().toISOString();
+    data.lastBackupAt = createdAt;
+    return { app: 'Protein Log', backupVersion: 1, createdAt, data };
+  }
+  function readBackup(text) {
+    const backup = JSON.parse(text);
+    if (backup?.app !== 'Protein Log' || backup.backupVersion !== 1) throw new Error('Choose a full Protein Log backup, not a weekly report.');
+    return validateStoredData(backup.data);
+  }
+  function restoreData(data) {
+    validateStoredData(data);
+    const next = { ...clone(data), settings: { ...defaultState().settings, ...data.settings, claudeApiKey: state.settings.claudeApiKey || '' } };
+    // Keep the pre-restore data separately; ordinary saves never overwrite it.
+    const previous = localStorage.getItem(STORAGE_KEY);
+    if (previous) localStorage.setItem(RESTORE_RECOVERY_KEY, previous);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    Object.keys(state).forEach(key => delete state[key]); Object.assign(state, next);
+    storageBlocked = false; storageWarning = '';
+  }
+  function confirmRestore(data) {
+    validateStoredData(data);
+    const days = Object.keys(data.days).length, meals = Object.values(data.days).reduce((sum, day) => sum + day.entries.length, 0);
+    if (!window.confirm(`Replace the current log with this backup (${days} days, ${meals} meals)? This is a replacement, not a merge. A local copy of your current data will be kept before restoring.`)) return;
+    restoreData(data); applyTheme(); renderSettings(); toast('Backup restored');
+  }
+  function backupSettingsHtml() {
+    const last = state.lastBackupAt ? `Last backup export: ${new Date(state.lastBackupAt).toLocaleString()}` : 'No full backup exported yet';
+    return `<div class="section-kicker">Data safety</div><div class="card settings-group"><strong>Back up your entire log</strong><p class="settings-help">${escapeHtml(last)}. Save a full backup to Files / iCloud Drive regularly and before changing phones or clearing Safari. Local recovery copies cannot survive cleared browser data. Backups contain private nutrition and weight data; your Claude API key is excluded.</p><button class="primary-button" id="backup-all">Export full backup</button><div class="field"><label for="restore-backup">Restore from a full backup</label><input id="restore-backup" type="file" accept=".json,application/json" /></div><div class="export-actions"><button class="secondary-button" id="recover-last">Recover previous save</button><button class="secondary-button" id="recover-restore">Undo last restore</button></div><p class="settings-help">Recovery replaces the log after confirmation. Export a full backup first if you want to keep both versions.</p></div>`;
+  }
+  function bindBackupSettings() {
+    document.getElementById('backup-all').onclick = async () => {
+      try {
+        if (storageBlocked) throw new Error('Restore your data first. Export is blocked so an empty log cannot be mistaken for a backup.');
+        const backup = fullBackup();
+        if (!await shareOrDownload(JSON.stringify(backup, null, 2), 'application/json', `protein-log-full-backup-${localDateKey(new Date())}.json`)) return;
+        state.lastBackupAt = backup.createdAt; saveState(); renderSettings(); toast('Backup export started — save it to Files');
+      } catch (error) { window.alert(error.message || 'Backup could not be exported.'); }
+    };
+    document.getElementById('restore-backup').onchange = async event => {
+      const file = event.target.files?.[0]; if (!file) return;
+      try { if (file.size > 20 * 1024 * 1024) throw new Error('Backup file is too large.'); confirmRestore(readBackup(await file.text())); }
+      catch (error) { window.alert(`Restore failed: ${error.message}`); }
+      finally { event.target.value = ''; }
+    };
+    const recovery = (id, key) => { document.getElementById(id).onclick = () => {
+      try { const text = localStorage.getItem(key); if (!text) throw new Error('No local recovery copy is available.'); confirmRestore(validateStoredData(JSON.parse(text))); }
+      catch (error) { window.alert(`Recovery failed: ${error.message}`); }
+    }; };
+    recovery('recover-last', RECOVERY_KEY); recovery('recover-restore', RESTORE_RECOVERY_KEY);
+  }
   function render() { if (activeTab === 'today') renderToday(); else if (activeTab === 'saved') renderSaved(); else if (activeTab === 'review') renderWeekly(); else renderSettings(); }
 
   function renderToday(previewDate = null) {
@@ -207,6 +329,7 @@
     app.innerHTML = `<section class="weekly-view">
       <div class="page-head"><div><h1>Trends</h1><div class="date-sub">${escapeHtml(report.dateRange)}</div></div></div>
       <div class="average-selector review-selector" aria-label="Trend period"><button id="review-7" aria-pressed="${reviewPeriod === 7}">7 days</button><button id="review-30" aria-pressed="${reviewPeriod === 30}">30 days</button></div>
+      ${reviewPeriod === 7 ? `<div class="field"><label for="export-week-select">Jump to a week · export status</label><select id="export-week-select">${exportWeekOptions()}</select></div>` : ''}
       <div class="week-nav"><button class="date-button" id="prev-week" aria-label="Previous period">‹</button><label class="week-picker-label" for="week-picker"><strong>${reviewPeriod === 7 ? escapeHtml(formatWeekLabel(selectedWeekStart)) : '30 days ending ' + escapeHtml(formatShortDay(selectedTrendEnd))}</strong><span>${reviewPeriod === 7 ? 'Select week' : 'Select end date'}</span></label><input id="week-picker" class="week-picker" type="date" value="${reviewPeriod === 7 ? selectedWeekStart : selectedTrendEnd}"/><button class="date-button" id="next-week" aria-label="Next period">›</button></div>
       <div class="weekly-grid">
         <div class="card metric-card primary-metric"><span>Average morning weight</span><strong>${s.averageWeightKg == null ? '—' : `${formatWeight(s.averageWeightKg)} kg`}</strong><small>${s.weightEntries} weigh-in${s.weightEntries === 1 ? '' : 's'}${s.weightChangeKg == null ? '' : ` · ${signedWeight(s.weightChangeKg)} kg vs ${comparison}`}</small></div>
@@ -219,6 +342,7 @@
       <div class="section-kicker">Daily overview</div>
       <div class="card daily-review">${report.days.map(d => `<div class="daily-review-row"><div><strong>${escapeHtml(formatShortDay(d.date))}</strong><small>${d.weightKg == null ? 'No weigh-in' : `${formatWeight(d.weightKg)} kg`}</small></div><div class="daily-review-macros"><strong>${d.hasNutrition ? `${roundMacro(d.proteinG)} g protein` : 'No meals logged'}</strong><small>${d.hasNutrition ? `${Math.round(d.calories)} kcal recorded` : '—'}</small></div></div>`).join('')}</div>
       <div class="section-kicker">Export ${reviewPeriod === 7 ? 'this week' : 'these 30 days'}</div>
+      <div class="card settings-group"><strong>${escapeHtml(reportExportStatus(report))}</strong><div class="settings-help">${state.reportExports?.[reportKey(report)] ? `Last export: ${escapeHtml(new Date(state.reportExports[reportKey(report)].at).toLocaleString())} · ${escapeHtml(state.reportExports[reportKey(report)].format.toUpperCase())}. ` : ''}Status tracks exports from this update onward. Sharing/downloading starts the export; check that you saved the file. A weekly report is not a full backup.</div></div>
       <div class="card export-card"><div><strong>Full nutrition + weight report</strong><small>Includes daily data, activities, creatine, meals and ingredient-level detail.</small></div><div class="export-actions"><button class="primary-button" id="export-csv">Export CSV</button><button class="secondary-button" id="export-json">Export JSON</button></div></div>
     </section>`;
     document.getElementById('review-7').onclick = () => { reviewPeriod = 7; renderWeekly(); };
@@ -228,6 +352,26 @@
     document.getElementById('week-picker').onchange = e => { if (e.target.value) { if (reviewPeriod === 7) selectedWeekStart = weekStartKey(e.target.value); else selectedTrendEnd = e.target.value; renderWeekly(); } };
     document.getElementById('export-csv').onclick = () => exportWeeklyReport(report, 'csv');
     document.getElementById('export-json').onclick = () => exportWeeklyReport(report, 'json');
+    const jump = document.getElementById('export-week-select');
+    if (jump) jump.onchange = e => { selectedWeekStart = e.target.value; renderWeekly(); };
+  }
+
+  function reportKey(report) { return `${report.weekStart}/${report.periodDays || 7}`; }
+  function reportSignature(report) {
+    // Compact change detector, not a security hash. No duplicate meal history in metadata.
+    const text = JSON.stringify([report.summary, report.days]);
+    let a = 2166136261, b = 5381;
+    for (let i = 0; i < text.length; i++) { a = Math.imul(a ^ text.charCodeAt(i), 16777619); b = Math.imul(b, 33) ^ text.charCodeAt(i); }
+    return `${a >>> 0}:${b >>> 0}:${text.length}`;
+  }
+  function reportExportStatus(report) {
+    const record = state.reportExports?.[reportKey(report)];
+    return !record ? 'Not exported' : record.signature === reportSignature(report) ? 'Exported' : 'Changed since export — export again';
+  }
+  function exportWeekOptions() {
+    const weeks = new Set([selectedWeekStart, weekStartKey(localDateKey(new Date()))]);
+    Object.entries(state.days).forEach(([date, day]) => { if ((day.entries || []).length || hasWeight(day) || day.creatine || Object.values(day.activities || {}).some(Boolean)) weeks.add(weekStartKey(date)); });
+    return [...weeks].sort().reverse().map(start => `<option value="${start}"${start === selectedWeekStart ? ' selected' : ''}>${escapeHtml(formatWeekLabel(start))} · ${escapeHtml(reportExportStatus(buildWeeklyReport(start)))}</option>`).join('');
   }
 
   function buildWeeklyReport(startDate, period = 7) {
@@ -282,12 +426,17 @@
   }
 
   async function exportWeeklyReport(report, format) {
+    const previousExports = state.reportExports;
     try {
       const isCsv = format === 'csv';
       const content = isCsv ? weeklyCsv(report) : JSON.stringify(report, null, 2);
       const filename = `protein-log-${report.weekStart}-to-${report.weekEnd}.${format}`;
-      await shareOrDownload(content, isCsv ? 'text/csv;charset=utf-8' : 'application/json', filename);
-    } catch { toast('Could not export this report'); }
+      if (!await shareOrDownload(content, isCsv ? 'text/csv;charset=utf-8' : 'application/json', filename)) return;
+      state.reportExports = { ...(state.reportExports || {}), [reportKey(report)]: { at: new Date().toISOString(), format, signature: reportSignature(report) } };
+      saveState();
+      if (activeTab === 'review') renderWeekly();
+      toast('Export started — check the file is saved');
+    } catch { state.reportExports = previousExports; window.alert('Export did not finish, or its status could not be saved. Check your downloaded files and try again.'); }
   }
 
   function weeklyCsv(report) {
@@ -313,11 +462,12 @@
   async function shareOrDownload(content, mimeType, filename) {
     const file = typeof File !== 'undefined' ? new File([content], filename, { type: mimeType }) : null;
     if (file && navigator.share && navigator.canShare?.({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: 'Protein Log nutrition report' }); return; }
-      catch (err) { if (err?.name === 'AbortError') return; }
+      try { await navigator.share({ files: [file], title: 'Protein Log export' }); return true; }
+      catch (err) { if (err?.name === 'AbortError') return false; throw err; }
     }
     const url = URL.createObjectURL(new Blob([content], { type: mimeType }));
     const link = document.createElement('a'); link.href = url; link.download = filename; document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return true;
   }
 
   function mealBadge(meal) {
@@ -393,6 +543,8 @@
 
   function renderSettings() {
     app.innerHTML = `<h1>Settings</h1><div class="section-kicker">Appearance</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="theme-select">Theme</label><select id="theme-select"><option value="system" ${(state.settings.theme || 'system') === 'system' ? 'selected' : ''}>System default</option><option value="light" ${state.settings.theme === 'light' ? 'selected' : ''}>Light</option><option value="dark" ${state.settings.theme === 'dark' ? 'selected' : ''}>Dark</option></select></div></div><div class="section-kicker">Targets</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="protein-target">Daily protein target</label><input id="protein-target" type="number" inputmode="decimal" min="1" step="1" value="${Number(state.settings.proteinTarget) || 160}" /></div><div class="settings-row"><label class="settings-label" for="calorie-target">Daily calorie guide</label><input id="calorie-target" type="number" inputmode="numeric" min="1" step="50" value="${Number(state.settings.calorieTarget) || 2500}" /><div class="settings-help">Calories are shown as a neutral guide. Protein remains the primary target.</div></div></div><div class="section-kicker">Claude</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="claude-api-key">Claude API key</label><input id="claude-api-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…" value="${escapeAttr(state.settings.claudeApiKey || '')}" /><div class="settings-help">Stored only in this browser. AI analysis is optional; meals can always be entered manually.</div></div></div><div class="card settings-group"><div class="settings-row"><strong>Storage</strong><div class="settings-help">Meals, targets, creatine checks, activities, weight, appearance and your Claude key stay in Safari on this iPhone.</div></div></div>`;
+    app.innerHTML = app.innerHTML.replace('<h1>Settings</h1>', '<h1>Settings</h1>' + backupSettingsHtml());
+    bindBackupSettings();
     document.getElementById('theme-select').onchange = e => { state.settings.theme = e.target.value; applyTheme(); saveState(); toast('Theme saved'); };
     bindSetting('protein-target', 'proteinTarget', 160, 'Protein target saved');
     bindSetting('calorie-target', 'calorieTarget', 2500, 'Calorie goal saved');
