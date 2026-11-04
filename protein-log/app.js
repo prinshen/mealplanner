@@ -249,7 +249,7 @@
     return `<div class="card weight-card"><div><strong>Morning body weight</strong><small>${hasWeight(day) ? `${formatWeight(day.weightKg)} kg logged for this day` : 'Optional daily weigh-in'}</small></div><div class="weight-controls"><div class="weight-input"><input id="morning-weight" aria-label="Morning body weight in kilograms" inputmode="decimal" placeholder="82,7" value="${hasWeight(day) ? escapeAttr(day.weightKg) : ''}" /><span>kg</span></div><button class="secondary-button" id="save-weight">Save</button>${hasWeight(day) ? '<button class="weight-delete" id="delete-weight" aria-label="Delete morning weight">×</button>' : ''}</div></div>`;
   }
   function creatineCardHtml(day) {
-    return `<label class="card creatine-row"><input id="creatine" type="checkbox" ${day.creatine ? 'checked' : ''}/><span class="checkmark">✓</span><span><strong>Creatine</strong><small>${day.creatine ? 'Taken today' : 'Mark as taken today'}</small></span></label><label class="card creatine-row"><input id="vitamins" type="checkbox" ${day.vitamins ? 'checked' : ''}/><span class="checkmark">✓</span><span><strong>Vitaminer</strong><small>Vitaminpille og D-vitamin${day.vitamins ? ' · Taget i dag' : ''}</small></span></label>`;
+    return `<label class="card creatine-row"><input id="creatine" type="checkbox" ${day.creatine ? 'checked' : ''}/><span class="checkmark">✓</span><span><strong>Creatine</strong></span></label><label class="card creatine-row"><input id="vitamins" type="checkbox" ${day.vitamins ? 'checked' : ''}/><span class="checkmark">✓</span><span><strong>Vitamins</strong></span></label>`;
   }
   function startDaySwipe(event) {
     if (activeTab !== 'today' || modalRoot.innerHTML || swipeAnimating || event.touches.length !== 1 || event.target.closest('input,textarea,select')) return;
@@ -341,7 +341,7 @@
         <div class="card metric-card"><span>Average recorded protein</span><strong>${s.loggedNutritionDays ? `${roundMacro(s.averageProteinG)} g` : '—'}</strong><small>${s.loggedNutritionDays} logged day${s.loggedNutritionDays === 1 ? '' : 's'}</small></div>
         <div class="card metric-card"><span>Average recorded calories</span><strong>${s.loggedNutritionDays ? Math.round(s.averageCalories).toLocaleString() : '—'}</strong><small>${s.loggedNutritionDays ? 'kcal / logged day' : 'No meals logged'}</small></div>
         <div class="card metric-card"><span>Workouts</span><strong>${s.strengthWorkouts + s.runs + s.longBikeRides}</strong><small>${s.strengthWorkouts} strength · ${s.runs} run · ${s.longBikeRides} bike</small></div>
-        <div class="card metric-card"><span>Creatine</span><strong>${s.creatineDays}/${reviewPeriod}</strong><small>days taken</small></div><div class="card metric-card"><span>Vitaminer</span><strong>${s.vitaminDays}/${reviewPeriod}</strong><small>Vitaminpille og D-vitamin</small></div>
+        <div class="card metric-card"><span>Creatine</span><strong>${s.creatineDays}/${reviewPeriod}</strong><small>days taken</small></div><div class="card metric-card"><span>Vitamins</span><strong>${s.vitaminDays}/${reviewPeriod}</strong><small>Multivitamin and vitamin D</small></div>
       </div>
       <div class="card trend-card"><div class="trend-head"><strong>Weight trend</strong><small>Morning weigh-ins · longer-term changes matter more than daily noise</small></div>${weightTrendSvg(report.days)}</div>
       <div class="section-kicker">Daily overview</div>
