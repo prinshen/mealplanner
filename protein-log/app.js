@@ -26,6 +26,9 @@
 
   function init() {
     applyTheme();
+    const lockPortrait = () => { try { window.screen?.orientation?.lock?.('portrait-primary')?.catch(() => {}); } catch (_) {} };
+    lockPortrait();
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) lockPortrait(); });
     document.addEventListener('focusin', selectNumericInputContent);
     const colorScheme = window.matchMedia('(prefers-color-scheme: dark)');
     const syncSystemTheme = () => { if ((state.settings.theme || 'system') === 'system') applyTheme(); };
@@ -103,6 +106,7 @@
     };
     Object.entries(data.days).forEach(([date, day]) => {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date || !object(day) || !Array.isArray(day.entries) || !numeric(day.weightKg)) fail();
+      if (day.vitamins != null && typeof day.vitamins !== 'boolean') fail();
       if (day.creatine != null && typeof day.creatine !== 'boolean') fail();
       if (day.activities != null && (!object(day.activities) || ['strength', 'run', 'longBike'].some(key => day.activities[key] != null && typeof day.activities[key] !== 'boolean'))) fail();
       day.entries.forEach(meal);
@@ -209,6 +213,7 @@
     document.getElementById('prev-day').onclick = () => { selectedDate = shiftDate(date, -1); renderToday(); };
     document.getElementById('next-day').onclick = () => { if (canNext) { selectedDate = shiftDate(date, 1); renderToday(); } };
     document.getElementById('date-picker').onchange = e => { if (e.target.value) { selectedDate = e.target.value; renderToday(); } };
+    document.getElementById('vitamins').onchange = e => { day.vitamins = e.target.checked; saveState(); renderToday(); };
     document.getElementById('creatine').onchange = e => { day.creatine = e.target.checked; saveState(); renderToday(); };
     document.getElementById('save-weight').onclick = () => { const value = num(document.getElementById('morning-weight').value); if (value <= 0) return toast('Enter a valid weight in kg'); day.weightKg = Math.round(value * 10) / 10; saveState(); renderToday(); toast('Morning weight saved'); };
     const deleteWeight = document.getElementById('delete-weight'); if (deleteWeight) deleteWeight.onclick = () => { delete day.weightKg; saveState(); renderToday(); toast('Weight entry deleted'); };
@@ -244,7 +249,7 @@
     return `<div class="card weight-card"><div><strong>Morning body weight</strong><small>${hasWeight(day) ? `${formatWeight(day.weightKg)} kg logged for this day` : 'Optional daily weigh-in'}</small></div><div class="weight-controls"><div class="weight-input"><input id="morning-weight" aria-label="Morning body weight in kilograms" inputmode="decimal" placeholder="82,7" value="${hasWeight(day) ? escapeAttr(day.weightKg) : ''}" /><span>kg</span></div><button class="secondary-button" id="save-weight">Save</button>${hasWeight(day) ? '<button class="weight-delete" id="delete-weight" aria-label="Delete morning weight">×</button>' : ''}</div></div>`;
   }
   function creatineCardHtml(day) {
-    return `<label class="card creatine-row"><input id="creatine" type="checkbox" ${day.creatine ? 'checked' : ''}/><span class="checkmark">✓</span><span><strong>Creatine</strong><small>${day.creatine ? 'Taken today' : 'Mark as taken today'}</small></span></label>`;
+    return `<label class="card creatine-row"><input id="creatine" type="checkbox" ${day.creatine ? 'checked' : ''}/><span class="checkmark">✓</span><span><strong>Creatine</strong><small>${day.creatine ? 'Taken today' : 'Mark as taken today'}</small></span></label><label class="card creatine-row"><input id="vitamins" type="checkbox" ${day.vitamins ? 'checked' : ''}/><span class="checkmark">✓</span><span><strong>Vitaminer</strong><small>Vitaminpille og D-vitamin${day.vitamins ? ' · Taget i dag' : ''}</small></span></label>`;
   }
   function startDaySwipe(event) {
     if (activeTab !== 'today' || modalRoot.innerHTML || swipeAnimating || event.touches.length !== 1 || event.target.closest('input,textarea,select')) return;
@@ -336,7 +341,7 @@
         <div class="card metric-card"><span>Average recorded protein</span><strong>${s.loggedNutritionDays ? `${roundMacro(s.averageProteinG)} g` : '—'}</strong><small>${s.loggedNutritionDays} logged day${s.loggedNutritionDays === 1 ? '' : 's'}</small></div>
         <div class="card metric-card"><span>Average recorded calories</span><strong>${s.loggedNutritionDays ? Math.round(s.averageCalories).toLocaleString() : '—'}</strong><small>${s.loggedNutritionDays ? 'kcal / logged day' : 'No meals logged'}</small></div>
         <div class="card metric-card"><span>Workouts</span><strong>${s.strengthWorkouts + s.runs + s.longBikeRides}</strong><small>${s.strengthWorkouts} strength · ${s.runs} run · ${s.longBikeRides} bike</small></div>
-        <div class="card metric-card"><span>Creatine</span><strong>${s.creatineDays}/${reviewPeriod}</strong><small>days taken</small></div>
+        <div class="card metric-card"><span>Creatine</span><strong>${s.creatineDays}/${reviewPeriod}</strong><small>days taken</small></div><div class="card metric-card"><span>Vitaminer</span><strong>${s.vitaminDays}/${reviewPeriod}</strong><small>Vitaminpille og D-vitamin</small></div>
       </div>
       <div class="card trend-card"><div class="trend-head"><strong>Weight trend</strong><small>Morning weigh-ins · longer-term changes matter more than daily noise</small></div>${weightTrendSvg(report.days)}</div>
       <div class="section-kicker">Daily overview</div>
@@ -370,7 +375,7 @@
   }
   function exportWeekOptions() {
     const weeks = new Set([selectedWeekStart, weekStartKey(localDateKey(new Date()))]);
-    Object.entries(state.days).forEach(([date, day]) => { if ((day.entries || []).length || hasWeight(day) || day.creatine || Object.values(day.activities || {}).some(Boolean)) weeks.add(weekStartKey(date)); });
+    Object.entries(state.days).forEach(([date, day]) => { if ((day.entries || []).length || hasWeight(day) || day.creatine || day.vitamins || Object.values(day.activities || {}).some(Boolean)) weeks.add(weekStartKey(date)); });
     return [...weeks].sort().reverse().map(start => `<option value="${start}"${start === selectedWeekStart ? ' selected' : ''}>${escapeHtml(formatWeekLabel(start))} · ${escapeHtml(reportExportStatus(buildWeeklyReport(start)))}</option>`).join('');
   }
 
@@ -381,7 +386,7 @@
       const totals = dayTotals(source);
       const activities = source.activities || {};
       const entries = Array.isArray(source.entries) ? source.entries : [];
-      return { date, weightKg: hasWeight(source) ? Number(source.weightKg) : null, hasNutrition: entries.length > 0, calories: totals.calories, proteinG: totals.protein, creatine: Boolean(source.creatine), strengthWorkout: Boolean(activities.strength), run: Boolean(activities.run), longBikeRide: Boolean(activities.longBike), meals: entries.map(entry => ({ id: entry.id, section: MEAL_LABELS[entry.category] || entry.category || '', name: entry.name || entry.description || 'Meal', description: entry.description || '', calories: num(entry.calories), proteinG: num(entry.protein), manualWeightG: entry.manualWeightG != null ? num(entry.manualWeightG) : null, ingredients: activeIngredients(entry.ingredients) })) };
+      return { date, weightKg: hasWeight(source) ? Number(source.weightKg) : null, hasNutrition: entries.length > 0, calories: totals.calories, proteinG: totals.protein, creatine: Boolean(source.creatine), vitamins: Boolean(source.vitamins), strengthWorkout: Boolean(activities.strength), run: Boolean(activities.run), longBikeRide: Boolean(activities.longBike), meals: entries.map(entry => ({ id: entry.id, section: MEAL_LABELS[entry.category] || entry.category || '', name: entry.name || entry.description || 'Meal', description: entry.description || '', calories: num(entry.calories), proteinG: num(entry.protein), manualWeightG: entry.manualWeightG != null ? num(entry.manualWeightG) : null, ingredients: activeIngredients(entry.ingredients) })) };
     });
     const weights = days.map(d => d.weightKg).filter(v => v != null);
     const previousWeights = Array.from({ length: period }, (_, i) => shiftDate(startDate, -period + i)).map(date => state.days[date]).filter(hasWeight).map(day => Number(day.weightKg));
@@ -399,6 +404,7 @@
       strengthWorkouts: days.filter(d => d.strengthWorkout).length,
       runs: days.filter(d => d.run).length,
       longBikeRides: days.filter(d => d.longBikeRide).length,
+      vitaminDays: days.filter(d => d.vitamins).length,
       creatineDays: days.filter(d => d.creatine).length
     };
     return { periodDays: period, weekStart: startDate, weekEnd: dates[period - 1], dateRange: `${formatLongDate(startDate)} – ${formatLongDate(dates[period - 1])}`, summary, days };
@@ -440,11 +446,11 @@
   }
 
   function weeklyCsv(report) {
-    const columns = ['week_start','week_end','weekly_average_weight_kg','weight_change_vs_previous_week_kg','weight_entries','logged_nutrition_days','average_recorded_calories','average_recorded_protein_g','weekly_strength_workouts','weekly_runs','weekly_long_bike_rides','creatine_days_out_of_7','date','morning_weight_kg','nutrition_logged','daily_calories','daily_protein_g','creatine','strength_workout','run','long_bike_ride','meal_section','meal_name','food_name','quantity_g','item_calories','item_protein_g','meal_calories','meal_protein_g','meal_description'];
+    const columns = ['week_start','week_end','weekly_average_weight_kg','weight_change_vs_previous_week_kg','weight_entries','logged_nutrition_days','average_recorded_calories','average_recorded_protein_g','weekly_strength_workouts','weekly_runs','weekly_long_bike_rides','creatine_days_out_of_7','vitamin_days_out_of_7','date','morning_weight_kg','nutrition_logged','daily_calories','daily_protein_g','creatine','vitamins','strength_workout','run','long_bike_ride','meal_section','meal_name','food_name','quantity_g','item_calories','item_protein_g','meal_calories','meal_protein_g','meal_description'];
     const rows = [];
-    const weekly = { week_start: report.weekStart, week_end: report.weekEnd, weekly_average_weight_kg: report.summary.averageWeightKg == null ? '' : roundExport(report.summary.averageWeightKg), weight_change_vs_previous_week_kg: report.summary.weightChangeKg == null ? '' : roundExport(report.summary.weightChangeKg), weight_entries: report.summary.weightEntries, logged_nutrition_days: report.summary.loggedNutritionDays, average_recorded_calories: report.summary.loggedNutritionDays ? roundExport(report.summary.averageCalories) : '', average_recorded_protein_g: report.summary.loggedNutritionDays ? roundExport(report.summary.averageProteinG) : '', weekly_strength_workouts: report.summary.strengthWorkouts, weekly_runs: report.summary.runs, weekly_long_bike_rides: report.summary.longBikeRides, creatine_days_out_of_7: report.summary.creatineDays };
+    const weekly = { week_start: report.weekStart, week_end: report.weekEnd, weekly_average_weight_kg: report.summary.averageWeightKg == null ? '' : roundExport(report.summary.averageWeightKg), weight_change_vs_previous_week_kg: report.summary.weightChangeKg == null ? '' : roundExport(report.summary.weightChangeKg), weight_entries: report.summary.weightEntries, logged_nutrition_days: report.summary.loggedNutritionDays, average_recorded_calories: report.summary.loggedNutritionDays ? roundExport(report.summary.averageCalories) : '', average_recorded_protein_g: report.summary.loggedNutritionDays ? roundExport(report.summary.averageProteinG) : '', weekly_strength_workouts: report.summary.strengthWorkouts, weekly_runs: report.summary.runs, weekly_long_bike_rides: report.summary.longBikeRides, vitamin_days_out_of_7: report.summary.vitaminDays, creatine_days_out_of_7: report.summary.creatineDays };
     report.days.forEach(day => {
-      const daily = { ...weekly, date: day.date, morning_weight_kg: day.weightKg ?? '', nutrition_logged: yesNo(day.hasNutrition), daily_calories: day.hasNutrition ? roundExport(day.calories) : '', daily_protein_g: day.hasNutrition ? roundExport(day.proteinG) : '', creatine: yesNo(day.creatine), strength_workout: yesNo(day.strengthWorkout), run: yesNo(day.run), long_bike_ride: yesNo(day.longBikeRide) };
+      const daily = { ...weekly, date: day.date, morning_weight_kg: day.weightKg ?? '', nutrition_logged: yesNo(day.hasNutrition), daily_calories: day.hasNutrition ? roundExport(day.calories) : '', daily_protein_g: day.hasNutrition ? roundExport(day.proteinG) : '', creatine: yesNo(day.creatine), vitamins: yesNo(day.vitamins), strength_workout: yesNo(day.strengthWorkout), run: yesNo(day.run), long_bike_ride: yesNo(day.longBikeRide) };
       if (!day.meals.length) { rows.push(daily); return; }
       day.meals.forEach(meal => {
         const mealBase = { ...daily, meal_section: meal.section, meal_name: meal.name, meal_calories: roundExport(meal.calories), meal_protein_g: roundExport(meal.proteinG), meal_description: meal.description };
