@@ -198,12 +198,14 @@
       <div class="date-nav"><button class="date-button" id="prev-day" aria-label="Previous day">‹</button><div class="date-center"><label class="date-click-target" for="date-picker"><div class="date-label">${escapeHtml(isToday ? 'Today' : formatDate(date))}</div><div class="date-sub">${escapeHtml(formatLongDate(date))}</div></label><input class="date-picker" id="date-picker" type="date" max="${today}" value="${date}" /></div><button class="date-button" id="next-day" aria-label="Next day" ${canNext ? '' : 'disabled'}>›</button></div>
       <div class="card progress-card"><div class="progress-ring" style="--progress:${Math.round(pct * 360)}deg;--protein-color:${proteinColor(totals.protein, proteinTarget)}"><div class="ring-content"><div class="ring-consumed">${roundMacro(totals.protein)} g eaten</div><div class="ring-number">${roundMacro(proteinRemaining)} g</div><div class="ring-target">protein left</div><div class="ring-consumed">Target ${roundMacro(proteinTarget)} g</div></div></div><div class="calorie-summary"><div><strong>${Math.round(totals.calories).toLocaleString()} kcal</strong><span>/ ${Math.round(calorieTarget).toLocaleString()} kcal</span></div><progress class="calorie-bar" aria-label="Calories toward daily target" max="${calorieTarget}" value="${Math.min(calorieTarget, totals.calories)}"></progress></div><div class="average-selector" aria-label="Average period"><button data-average-period="7" aria-pressed="${averagePeriod === 7}">7 days</button><button data-average-period="30" aria-pressed="${averagePeriod === 30}">30 days</button></div><div class="average-stat">${average.count ? `<strong>${roundMacro(average.protein)} g protein · ${Math.round(average.calories)} kcal</strong> average recorded intake<br>${average.count} logged day${average.count === 1 ? '' : 's'} · last ${averagePeriod} days` : `No recorded meals in the last ${averagePeriod} days`}</div><div class="weight-average">${renderWeightAverage(weightTrend, averagePeriod)}</div></div>
       ${!hasWeight(day) ? weightCardHtml(day) : ''}
-      ${!day.creatine ? creatineCardHtml(day) : ''}
+      ${!day.creatine ? supplementCardHtml('creatine', 'Creatine', day.creatine) : ''}
+      ${!day.vitamins ? supplementCardHtml('vitamins', 'Vitamins', day.vitamins) : ''}
       ${state.copiedMeal ? `<div class="card copied-meal-card"><div class="copied-meal-heading"><div><small>Copied meal</small><strong>${escapeHtml(state.copiedMeal.name)}</strong></div><button class="close-button" id="clear-copied-meal" aria-label="Clear copied meal">×</button></div><div class="copy-controls"><select id="paste-category" aria-label="Paste meal section">${mealOptions(state.copiedMeal.category)}</select><button class="primary-button" id="paste-meal">Paste meal</button></div><div class="copy-footer"><span>To: ${escapeHtml(isToday ? 'Today' : formatDate(date))}</span>${isToday ? '' : '<button class="copy-today" id="copy-go-today">Go to today</button>'}</div></div>` : ''}
       ${MEAL_TYPES.map(type => renderMealSection(type, day)).join('')}
       <button class="card quick-add-toggle find-meal-button" id="find-meal">Find a meal <span aria-hidden="true">⌕</span></button>
       <div class="card activity-card"><div class="activity-head"><strong>Activity</strong><small>Optional markers for this day</small></div><div class="activity-grid">${activityToggle('strength', 'Strength workout', activities.strength)}${activityToggle('run', 'Run', activities.run)}${activityToggle('longBike', 'Longer bike ride', activities.longBike)}</div></div>
-      ${day.creatine ? creatineCardHtml(day) : ''}
+      ${day.creatine ? supplementCardHtml('creatine', 'Creatine', day.creatine) : ''}
+      ${day.vitamins ? supplementCardHtml('vitamins', 'Vitamins', day.vitamins) : ''}
       ${hasWeight(day) ? weightCardHtml(day) : ''}
     </section>`;
     if (previewDate) return html;
@@ -248,8 +250,8 @@
   function weightCardHtml(day) {
     return `<div class="card weight-card"><div><strong>Morning body weight</strong><small>${hasWeight(day) ? `${formatWeight(day.weightKg)} kg logged for this day` : 'Optional daily weigh-in'}</small></div><div class="weight-controls"><div class="weight-input"><input id="morning-weight" aria-label="Morning body weight in kilograms" inputmode="decimal" placeholder="82,7" value="${hasWeight(day) ? escapeAttr(day.weightKg) : ''}" /><span>kg</span></div><button class="secondary-button" id="save-weight">Save</button>${hasWeight(day) ? '<button class="weight-delete" id="delete-weight" aria-label="Delete morning weight">×</button>' : ''}</div></div>`;
   }
-  function creatineCardHtml(day) {
-    return `<label class="card creatine-row"><input id="creatine" type="checkbox" ${day.creatine ? 'checked' : ''}/><span class="checkmark">✓</span><span><strong>Creatine</strong></span></label><label class="card creatine-row"><input id="vitamins" type="checkbox" ${day.vitamins ? 'checked' : ''}/><span class="checkmark">✓</span><span><strong>Vitamins</strong></span></label>`;
+  function supplementCardHtml(id, label, checked) {
+    return `<label class="card creatine-row"><input id="${id}" type="checkbox" ${checked ? 'checked' : ''}/><span class="checkmark">✓</span><span><strong>${label}</strong></span></label>`;
   }
   function startDaySwipe(event) {
     if (activeTab !== 'today' || modalRoot.innerHTML || swipeAnimating || event.touches.length !== 1 || event.target.closest('input,textarea,select')) return;
