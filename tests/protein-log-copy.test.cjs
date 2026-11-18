@@ -139,7 +139,8 @@ assert.equal(migratedManual.calories, 500);
 
 const ai = app.api.normalizeAIResult({ name: 'AI meal', protein: 30, calories: 400, carbs: 100, fat: 20, ingredients: [{ name: 'Chicken', amount: 200, proteinPer100g: 20, caloriesPer100g: 150, carbsPer100g: 5 }] });
 assert.equal(ai.carbs, undefined, 'unwanted AI fields are ignored');
-assert.deepEqual(Object.keys(ai.ingredients[0]).sort(), ['amount', 'caloriesPer100g', 'name', 'proteinPer100g']);
+assert.deepEqual(Object.keys(ai.ingredients[0]).sort(), ['amount', 'caloriesPer100g', 'name', 'nutritionSource', 'proteinPer100g']);
+assert.equal(ai.ingredients[0].nutritionSource, 'ai');
 assert.equal(ai.protein, 40, 'AI totals are calculated from its ingredient rows');
 assert.equal(ai.calories, 300);
 
@@ -247,7 +248,7 @@ variants.api.setDate('2026-08-19');
 variants.api.renderToday();
 const filledLayout = variants.node('app').innerHTML;
 assert.ok(filledLayout.indexOf('weight-card') > filledLayout.indexOf('activity-card'));
-assert.ok(filledLayout.indexOf('creatine-row') > filledLayout.indexOf('activity-card'));
+assert.ok(filledLayout.indexOf('id="creatine"') > filledLayout.indexOf('activity-card'));
 assert.match(filledLayout, /calorie-bar/);
 assert.match(filledLayout, /data-average-period="30"/);
 const untouched = JSON.stringify(variants.api.state.days);
