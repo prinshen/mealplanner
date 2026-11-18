@@ -602,7 +602,22 @@
       const manualButton = document.getElementById('manual-food'); if (manualButton) manualButton.onclick = () => { draft = prepareIngredientEditor({ ...draft, description: document.getElementById('food-text').value, ingredients: [blankIngredient()], manualTotals: { protein: false, calories: false } }); quality = 'manual'; ingredientBaseline = ingredientEditFingerprint(draft.ingredients); entryMode = 'manual'; renderFoodEditor(); };
       const cancel = document.getElementById('cancel-entry'); if (cancel) cancel.onclick = closeModal;
       if (!showNutrition) return;
-      document.getElementById('add-food-ingredient').onclick = () => { syncDraft(); draft.ingredients.push(blankIngredient()); markIngredientEdit(); renderFoodEditor(); };
+      document.getElementById('add-food-ingredient').onclick = () => {
+        syncDraft();
+        root.innerHTML = '<h3>Add ingredient</h3><div class="field"><input id="ingredient-search" type="search" placeholder="Search ingredients" aria-label="Search ingredients" /></div><div class="modal-actions"><button class="secondary-button" id="ingredient-back">Back</button><button class="primary-button" id="ingredient-new">Enter new ingredient</button></div><div id="ingredient-results"></div>';
+        const add = ingredient => { draft.ingredients.push(clone(ingredient)); markIngredientEdit(); draft = calculateFromIngredients(draft); renderFoodEditor(); };
+        const search = document.getElementById('ingredient-search');
+        const update = () => {
+          const items = ingredientLibrary(search.value);
+          const results = document.getElementById('ingredient-results');
+          results.innerHTML = items.length ? items.map((item, index) => `<button class="card library-meal" data-ingredient-choice="${index}"><span class="library-title"><strong>${escapeHtml(item.ingredient.name)}</strong>${ingredientBadge(item.ingredient)}</span><span>${roundInput(item.ingredient.proteinPer100g)} g protein · ${roundInput(item.ingredient.caloriesPer100g)} kcal /100 g</span><small>Used ${item.count} times</small></button>`).join('') : '<div class="empty-card">No ingredients found. Enter a new ingredient above.</div>';
+          results.querySelectorAll('[data-ingredient-choice]').forEach(button => button.onclick = () => add({ ...items[Number(button.dataset.ingredientChoice)].ingredient, amount: 0 }));
+        };
+        search.oninput = update;
+        document.getElementById('ingredient-back').onclick = renderFoodEditor;
+        document.getElementById('ingredient-new').onclick = () => add({ ...blankIngredient(), name: search.value.trim() });
+        update();
+      };
       if (existing) {
         document.getElementById('copy-entry').onclick = () => {
           syncDraft();
@@ -612,7 +627,7 @@
           saveState(); closeModal(); renderToday(); toast('Meal copied — ready to paste today');
         };
       }
-      root.querySelectorAll('.ingredient-row input').forEach(input => input.addEventListener('input', () => { draft.ingredients = readIngredientRows(); markIngredientEdit(); draft = calculateFromIngredients({ ...draft, manualTotals: { protein: false, calories: false } }); updateCalculatedTotal(); }));
+      root.querySelectorAll('.ingredient-row input').forEach(input => input.addEventListener('input', () => { draft.ingredients = readIngredientRows(draft.ingredients); markIngredientEdit(); draft = calculateFromIngredients({ ...draft, manualTotals: { protein: false, calories: false } }); updateCalculatedTotal(); }));
       root.querySelectorAll('[data-remove-ingredient]').forEach(button => button.onclick = () => { syncDraft(); draft.ingredients.splice(Number(button.dataset.removeIngredient), 1); if (!draft.ingredients.length) draft.ingredients.push(blankIngredient()); markIngredientEdit(); draft = calculateFromIngredients(draft); renderFoodEditor(); });
       const del = document.getElementById('delete-entry'); if (del) del.onclick = () => { const d = getDay(selectedDate); d.entries = d.entries.filter(e => e.id !== existing.id); saveState(); closeModal(); renderToday(); };
       document.getElementById('save-entry').onclick = () => {
@@ -627,7 +642,7 @@
         saveState(); closeModal(); activateToday(); renderToday();
         toast(existing ? 'Meal updated' : 'Meal added');
       };
-      function syncDraft() { draft.name = document.getElementById('meal-name').value; draft.description = document.getElementById('food-text').value; if (root.querySelectorAll('.ingredient-row').length) draft.ingredients = readIngredientRows(); markIngredientEdit(); draft = calculateFromIngredients({ ...draft, manualTotals: { protein: false, calories: false }, manualWeightG: undefined, per100Totals: null }); }
+      function syncDraft() { draft.name = document.getElementById('meal-name').value; draft.description = document.getElementById('food-text').value; if (root.querySelectorAll('.ingredient-row').length) draft.ingredients = readIngredientRows(draft.ingredients); markIngredientEdit(); draft = calculateFromIngredients({ ...draft, manualTotals: { protein: false, calories: false }, manualWeightG: undefined, per100Totals: null }); }
       function updateCalculatedTotal() { const el = document.getElementById('calculated-meal-total'); if (el) el.innerHTML = `Meal total: <strong>${roundMacro(draft.protein)} g protein · ${Math.round(draft.calories)} kcal</strong>`; }
     }
   }
@@ -648,7 +663,7 @@
 
   function normalizeAIResult(raw) {
     if (!raw || typeof raw !== 'object' || !Array.isArray(raw.ingredients)) return null;
-    const ingredients = activeIngredients(raw.ingredients);
+    const ingredients = activeIngredients(raw.ingredients).map(i => ({ ...i, nutritionSource: 'ai' }));
     if (!ingredients.length) return null;
     return calculateFromIngredients({ name: String(raw.name || 'Meal'), protein: 0, calories: 0, ingredients });
   }
@@ -662,7 +677,7 @@
   function calculateFromIngredients(meal) { if (!meal.ingredients.length) return meal; return { ...meal, protein: meal.ingredients.reduce((s, i) => s + num(i.amount) * num(i.proteinPer100g) / 100, 0), calories: meal.ingredients.reduce((s, i) => s + num(i.amount) * num(i.caloriesPer100g) / 100, 0) }; }
   function totalIngredientAmount(ingredients) { return (Array.isArray(ingredients) ? ingredients : []).reduce((sum, ingredient) => sum + num(ingredient.amount), 0); }
   function normalizePer100Totals(value, meal, amount = totalIngredientAmount(meal?.ingredients) || num(meal?.manualWeightG)) { if (!amount) return value ? { protein: num(value.protein), calories: num(value.calories) } : null; return { protein: Number.isFinite(Number(value?.protein)) ? num(value.protein) : num(meal?.protein) * 100 / amount, calories: Number.isFinite(Number(value?.calories)) ? num(value.calories) : num(meal?.calories) * 100 / amount }; }
-  function blankIngredient() { return { name: '', amount: 0, proteinPer100g: 0, caloriesPer100g: 0 }; }
+  function blankIngredient() { return { nutritionSource: 'manual', name: '', amount: 0, proteinPer100g: 0, caloriesPer100g: 0 }; }
   function prepareIngredientEditor(meal) {
     let ingredients = activeIngredients(meal?.ingredients);
     if (!ingredients.length) {
@@ -679,8 +694,34 @@
   }
   function localEstimate(text) { const s = text.toLowerCase(); if (!s.includes('100g oats') && !s.includes('100 g oats')) return null; const ingredients = [{ name: 'Oats', amount: 100, proteinPer100g: 13.2, caloriesPer100g: 379 }, { name: 'Milk', amount: 258, proteinPer100g: 3.4, caloriesPer100g: 61 }]; return calculateFromIngredients({ name: 'Oats with milk', ingredients }); }
 
-  function ingredientRowHtml(ing, i) { return `<div class="ingredient-row"><input aria-label="Ingredient" data-ing-index="${i}" data-ing-field="name" value="${escapeAttr(ing.name || '')}" /><div class="amount-input"><input aria-label="Amount in grams" data-ing-index="${i}" data-ing-field="amount" inputmode="decimal" value="${escapeAttr(roundInput(ing.amount))}" /><span>g</span></div><div class="ingredient-nutrients"><label><span>Protein /100g</span><input aria-label="Protein per 100 grams" data-ing-index="${i}" data-ing-field="proteinPer100g" inputmode="decimal" value="${escapeAttr(roundInput(ing.proteinPer100g))}" /></label><label><span>kcal /100g</span><input aria-label="Calories per 100 grams" data-ing-index="${i}" data-ing-field="caloriesPer100g" inputmode="decimal" value="${escapeAttr(roundInput(ing.caloriesPer100g))}" /></label></div><button class="ingredient-remove" type="button" data-remove-ingredient="${i}" aria-label="Remove ingredient">×</button></div>`; }
-  function readIngredientRows() { return [...document.querySelectorAll('.ingredient-row')].map(row => { const values = {}; row.querySelectorAll('input').forEach(input => { const field = input.dataset.ingField; values[field] = field === 'name' ? input.value.trim() : num(input.value); }); return { name: values.name || 'Ingredient', amount: num(values.amount), proteinPer100g: num(values.proteinPer100g), caloriesPer100g: num(values.caloriesPer100g) }; }); }
+
+  function ingredientBadge(ingredient) {
+    return ingredient.nutritionSource === 'manual' ? '' : '<small class="meal-quality">' + (ingredient.nutritionSource === 'ai' ? 'AI' : 'Source unknown') + '</small>';
+  }
+  function ingredientLibrary(query = '') {
+    const variants = new Map();
+    const nameKey = name => String(name).trim().toLowerCase().replace(/\s+/g, ' ');
+    const add = (meal, logged) => {
+      const seen = new Set();
+      normalizeExisting(meal).ingredients.forEach(ingredient => {
+        const key = JSON.stringify([nameKey(ingredient.name), roundInput(ingredient.proteinPer100g), roundInput(ingredient.caloriesPer100g)]);
+        let item = variants.get(key);
+        if (!item) { item = { ingredient: clone(ingredient), count: 0 }; variants.set(key, item); }
+        if (logged && !seen.has(key)) item.count++;
+        seen.add(key);
+        const rank = source => source === 'manual' ? 2 : source === 'ai' ? 1 : 0;
+        if (rank(ingredient.nutritionSource) > rank(item.ingredient.nutritionSource)) item.ingredient = clone(ingredient);
+      });
+    };
+    state.savedMeals.forEach(meal => add(meal, false));
+    Object.values(state.days).forEach(day => (day.entries || []).forEach(meal => add(meal, true)));
+    const terms = nameKey(query).split(' ').filter(Boolean);
+    return [...variants.values()].filter(item => terms.every(term => nameKey(item.ingredient.name).includes(term)))
+      .sort((a, b) => b.count - a.count || a.ingredient.name.localeCompare(b.ingredient.name));
+  }
+
+  function ingredientRowHtml(ing, i) { return `<div class="ingredient-row"><input aria-label="Ingredient" data-ing-index="${i}" data-ing-field="name" value="${escapeAttr(ing.name || '')}" /><div class="amount-input"><input aria-label="Amount in grams" data-ing-index="${i}" data-ing-field="amount" inputmode="decimal" value="${escapeAttr(roundInput(ing.amount))}" /><span>g</span></div><div class="ingredient-nutrients"><span data-nutrition-source style="grid-column:1/-1">${ingredientBadge(ing)}</span><label><span>Protein /100g</span><input aria-label="Protein per 100 grams" data-ing-index="${i}" data-ing-field="proteinPer100g" inputmode="decimal" value="${escapeAttr(roundInput(ing.proteinPer100g))}" /></label><label><span>kcal /100g</span><input aria-label="Calories per 100 grams" data-ing-index="${i}" data-ing-field="caloriesPer100g" inputmode="decimal" value="${escapeAttr(roundInput(ing.caloriesPer100g))}" /></label></div><button class="ingredient-remove" type="button" data-remove-ingredient="${i}" aria-label="Remove ingredient">×</button></div>`; }
+  function readIngredientRows(previous = []) { return [...document.querySelectorAll('.ingredient-row')].map((row, index) => { const values = {}; row.querySelectorAll('input').forEach(input => { const field = input.dataset.ingField; values[field] = field === 'name' ? input.value.trim() : num(input.value); }); const old = previous[index]; const changed = old && (roundInput(old.proteinPer100g) !== num(values.proteinPer100g) || roundInput(old.caloriesPer100g) !== num(values.caloriesPer100g)); const nutritionSource = changed ? 'manual' : old?.nutritionSource; const badge = row.querySelector?.('[data-nutrition-source]'); if (badge) badge.innerHTML = ingredientBadge({ nutritionSource }); return { name: values.name || 'Ingredient', amount: num(values.amount), proteinPer100g: num(values.proteinPer100g), caloriesPer100g: num(values.caloriesPer100g), ...(nutritionSource ? { nutritionSource } : {}) }; }); }
   function mealOptions(selected) { return MEAL_TYPES.map(t => `<option value="${t}" ${t === selected ? 'selected' : ''}>${MEAL_LABELS[t]}</option>`).join(''); }
   function hasWeight(day) { return Boolean(day) && Number.isFinite(Number(day.weightKg)) && Number(day.weightKg) > 0; }
   function averageNumbers(values) { const valid = values.map(Number).filter(Number.isFinite); return valid.length ? valid.reduce((sum, value) => sum + value, 0) / valid.length : null; }
@@ -705,7 +746,7 @@
   function mealCopySnapshot(meal) {
     return { quality: meal.quality || (meal.source === 'manual' ? 'manual' : ''), name: meal.name || meal.description || 'Meal', description: meal.description || '', category: MEAL_TYPES.includes(meal.category) ? meal.category : 'snacks', protein: num(meal.protein), calories: num(meal.calories), manualTotals: normalizeManualTotals(meal.manualTotals, true), ...(meal.manualWeightG != null ? { manualWeightG: num(meal.manualWeightG) } : {}), ...(meal.per100Totals ? { per100Totals: { ...meal.per100Totals } } : {}), ingredients: activeIngredients(meal.ingredients), source: 'copy' };
   }
-  function activeIngredients(ingredients) { return (Array.isArray(ingredients) ? ingredients : []).map(item => ({ name: String(item?.name || 'Ingredient'), amount: num(item?.amount), proteinPer100g: Number.isFinite(Number(item?.proteinPer100g)) ? num(item.proteinPer100g) : null, caloriesPer100g: Number.isFinite(Number(item?.caloriesPer100g)) ? num(item.caloriesPer100g) : null })); }
+  function activeIngredients(ingredients) { return (Array.isArray(ingredients) ? ingredients : []).map(item => ({ ...(['ai', 'manual'].includes(item?.nutritionSource) ? { nutritionSource: item.nutritionSource } : {}), name: String(item?.name || 'Ingredient'), amount: num(item?.amount), proteinPer100g: Number.isFinite(Number(item?.proteinPer100g)) ? num(item.proteinPer100g) : null, caloriesPer100g: Number.isFinite(Number(item?.caloriesPer100g)) ? num(item.caloriesPer100g) : null })); }
   function normalizeManualTotals(value, legacyFallback = false) { return { protein: typeof value?.protein === 'boolean' ? value.protein : legacyFallback, calories: typeof value?.calories === 'boolean' ? value.calories : legacyFallback }; }
   function hasNumberInput(id) { const value = document.getElementById(id)?.value.trim().replace(',', '.'); return value !== '' && Number.isFinite(Number(value)) && Number(value) >= 0; }
   function roundInput(value) { const n = num(value); return Math.round(n * 100) / 100; }
