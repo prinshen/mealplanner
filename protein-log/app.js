@@ -637,10 +637,16 @@
         const d = getDay(selectedDate);
         const description = draft.description.trim();
         const entry = { id: existing?.id || uid(), category, description, name: draft.name.trim() || description, quality, protein: num(draft.protein), calories: num(draft.calories), manualTotals: { protein: false, calories: false }, ingredients: activeIngredients(draft.ingredients), source: analyzedWithAI ? 'ai' : (originalMeal?.source || 'manual'), ...(existing?.savedMealId ? { savedMealId: existing.savedMealId } : {}) };
+        const knownIngredients = new Set(ingredientLibrary().map(item => ingredientKey(item.ingredient)));
+        const newNames = [...new Set(entry.ingredients
+          .filter(ingredient => !knownIngredients.has(ingredientKey(ingredient)))
+          .map(ingredient => ingredient.name))];
         const idx = d.entries.findIndex(e => e.id === entry.id);
         if (idx >= 0) d.entries[idx] = entry; else d.entries.push(entry);
         saveState(); closeModal(); activateToday(); renderToday();
-        toast(existing ? 'Meal updated' : 'Meal added');
+        const mealMessage = existing ? 'Meal updated' : 'Meal added';
+        if (newNames.length) toast(`${mealMessage}. Added to ingredient library: ${newNames.join(', ')}`, 5000);
+        else toast(mealMessage);
       };
       function syncDraft() { draft.name = document.getElementById('meal-name').value; draft.description = document.getElementById('food-text').value; if (root.querySelectorAll('.ingredient-row').length) draft.ingredients = readIngredientRows(draft.ingredients); markIngredientEdit(); draft = calculateFromIngredients({ ...draft, manualTotals: { protein: false, calories: false }, manualWeightG: undefined, per100Totals: null }); }
       function updateCalculatedTotal() { const el = document.getElementById('calculated-meal-total'); if (el) el.innerHTML = `Meal total: <strong>${roundMacro(draft.protein)} g protein · ${Math.round(draft.calories)} kcal</strong>`; }
@@ -698,13 +704,18 @@
   function ingredientBadge(ingredient) {
     return ingredient.nutritionSource === 'manual' ? '' : '<small class="meal-quality">' + (ingredient.nutritionSource === 'ai' ? 'AI' : 'Source unknown') + '</small>';
   }
+  function ingredientNameKey(name) {
+    return String(name).trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+  function ingredientKey(ingredient) {
+    return JSON.stringify([ingredientNameKey(ingredient.name), roundInput(ingredient.proteinPer100g), roundInput(ingredient.caloriesPer100g)]);
+  }
   function ingredientLibrary(query = '') {
     const variants = new Map();
-    const nameKey = name => String(name).trim().toLowerCase().replace(/\s+/g, ' ');
     const add = (meal, logged) => {
       const seen = new Set();
       normalizeExisting(meal).ingredients.forEach(ingredient => {
-        const key = JSON.stringify([nameKey(ingredient.name), roundInput(ingredient.proteinPer100g), roundInput(ingredient.caloriesPer100g)]);
+        const key = ingredientKey(ingredient);
         let item = variants.get(key);
         if (!item) { item = { ingredient: clone(ingredient), count: 0 }; variants.set(key, item); }
         if (logged && !seen.has(key)) item.count++;
@@ -715,8 +726,8 @@
     };
     state.savedMeals.forEach(meal => add(meal, false));
     Object.values(state.days).forEach(day => (day.entries || []).forEach(meal => add(meal, true)));
-    const terms = nameKey(query).split(' ').filter(Boolean);
-    return [...variants.values()].filter(item => terms.every(term => nameKey(item.ingredient.name).includes(term)))
+    const terms = ingredientNameKey(query).split(' ').filter(Boolean);
+    return [...variants.values()].filter(item => terms.every(term => ingredientNameKey(item.ingredient.name).includes(term)))
       .sort((a, b) => b.count - a.count || a.ingredient.name.localeCompare(b.ingredient.name));
   }
 
@@ -755,7 +766,13 @@
   function lockPage() { if (document.body.classList.contains('modal-open')) return; lockedScrollY = window.scrollY; document.body.style.top = `-${lockedScrollY}px`; document.body.classList.add('modal-open'); }
   function closeModal() { modalRoot.innerHTML = ''; document.body.classList.remove('modal-open'); document.body.style.top = ''; window.scrollTo(0, lockedScrollY); }
   function showInlineError(id, message) { const el = document.getElementById(id); if (el) el.innerHTML = `<div class="inline-error">${escapeHtml(message)}</div>`; }
-  function toast(message) { toastRoot.textContent = message; toastRoot.classList.add('show'); setTimeout(() => toastRoot.classList.remove('show'), 1600); }
+  let toastVersion = 0;
+  function toast(message, duration = 1600) {
+    const version = ++toastVersion;
+    toastRoot.textContent = message;
+    toastRoot.classList.add('show');
+    setTimeout(() => { if (version === toastVersion) toastRoot.classList.remove('show'); }, duration);
+  }
   function roundMacro(v) { const n = num(v); return Math.abs(n - Math.round(n)) < 0.05 ? Math.round(n) : n.toFixed(1); }
   function localDateKey(d) { const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0'); return `${y}-${m}-${day}`; }
   function parseLocalDate(key) { const [y, m, d] = key.split('-').map(Number); return new Date(y, m - 1, d, 12); }
