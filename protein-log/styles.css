@@ -21,3 +21,44 @@ html[data-theme=dark] .calorie-summary span,html[data-theme=dark] .library-ingre
 .review-selector{width:max-content;margin:0 auto 10px}.ring-content .ring-consumed{margin:4px 0;font-size:11px}.ring-content .ring-target{font-size:13px}
 .library-section .section-kicker,.meal-suggestions .section-kicker{font-size:12px;font-weight:750}.meal-suggestions .library-meal{padding:10px 13px;gap:4px;margin:8px 0}.meal-suggestions .library-title strong{font-size:15px}.meal-suggestions .library-macros{font-size:12px}
 .library-section{margin-top:10px}.library-section>summary{display:flex;align-items:center;gap:10px;padding:15px 16px;border:1px solid #e5e5e7;border-radius:16px;background:#fff;cursor:pointer;list-style:none;font-weight:750}.library-section>summary::-webkit-details-marker{display:none}.library-section>summary small{margin-left:auto;color:#777;font-size:12px;font-weight:400}.library-chevron{color:#777;transition:transform .15s}.library-section[open]>summary .library-chevron{transform:rotate(180deg)}.meal-suggestions{margin-top:20px}html[data-theme=dark] .library-section>summary{background:#1a1d1c;border-color:#303532}html[data-theme=dark] .library-section>summary small,html[data-theme=dark] .library-chevron{color:#a7adaa}
+
+/* Give each ingredient its own card in the editor and search results. */
+.ingredient-editor .ingredient-list {
+  display: grid;
+  gap: 12px;
+  background: transparent;
+  border: 0;
+  overflow: visible;
+}
+.ingredient-editor .ingredient-head,
+.ingredient-editor .ingredient-row {
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, .7fr);
+  padding-inline: 12px 42px;
+}
+.ingredient-editor .ingredient-row,
+#ingredient-results .library-meal {
+  border: 1px solid #cdd7d1;
+  border-radius: 16px;
+  background: #fff;
+}
+.ingredient-editor .ingredient-row {
+  gap: 8px;
+  padding-block: 12px;
+}
+.ingredient-editor .ingredient-nutrients {
+  min-width: 0;
+}
+.ingredient-editor [data-nutrition-source]:empty {
+  display: none;
+}
+#ingredient-results .library-meal {
+  margin-block: 12px;
+}
+html[data-theme=dark] .ingredient-editor .ingredient-list {
+  background: transparent;
+}
+html[data-theme=dark] .ingredient-editor .ingredient-row,
+html[data-theme=dark] #ingredient-results .library-meal {
+  border-color: #505d56;
+  background: #1a1d1c;
+}
