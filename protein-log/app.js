@@ -14,6 +14,7 @@
   let selectedWeekStart = weekStartKey(selectedDate);
   let averagePeriod = 7;
   let reviewPeriod = 7;
+  let longWeightView = false;
   let selectedTrendEnd = selectedDate;
   let swipeAnimating = false;
   let touchStart = null;
@@ -349,7 +350,9 @@
         <div class="card metric-card"><span>Workouts</span><strong>${s.strengthWorkouts + s.runs + s.longBikeRides}</strong><small>${s.strengthWorkouts} strength · ${s.runs} run · ${s.longBikeRides} bike</small></div>
         <div class="card metric-card"><span>Creatine</span><strong>${s.creatineDays}/${reviewPeriod}</strong><small>days taken</small></div><div class="card metric-card"><span>Vitamins</span><strong>${s.vitaminDays}/${reviewPeriod}</strong><small>Multivitamin and vitamin D</small></div>
       </div>
-      <div class="card trend-card"><div class="trend-head"><strong>Weight trend</strong><small>Morning weigh-ins · longer-term changes matter more than daily noise</small></div>${weightTrendSvg(report.days)}</div>
+      <div class="card trend-card"><div class="trend-head"><strong>Protein consistency</strong><small>Recorded protein · ${s.loggedNutritionDays} logged days · dashed line: current target ${roundMacro(state.settings.proteinTarget || 160)} g</small></div>${trendChart(report.days, 'protein')}<div id="trend-meals" aria-live="polite"></div></div>
+      <div class="card trend-card"><div class="trend-head"><strong>Weight trend</strong><small>Morning weigh-ins · solid line: 7-day average</small></div><button class="secondary-button trend-range" id="weight-range" aria-pressed="${longWeightView}">${longWeightView ? '90 days · return to selected period' : 'View 90 days'}</button>${trendChart(longWeightView ? weightWindow(report.weekEnd) : report.days, 'weight')}</div>
+      ${proteinSources(start, reviewPeriod)}
       <div class="section-kicker">Daily overview</div>
       <div class="card daily-review">${report.days.map(d => `<div class="daily-review-row"><div><strong>${escapeHtml(formatShortDay(d.date))}</strong><small>${d.weightKg == null ? 'No weigh-in' : `${formatWeight(d.weightKg)} kg`}</small></div><div class="daily-review-macros"><strong>${d.hasNutrition ? `${roundMacro(d.proteinG)} g protein` : 'No meals logged'}</strong><small>${d.hasNutrition ? `${Math.round(d.calories)} kcal recorded` : '—'}</small></div></div>`).join('')}</div>
       <div class="section-kicker">Export ${reviewPeriod === 7 ? 'this week' : 'these 30 days'}</div>
@@ -362,6 +365,12 @@
     document.getElementById('next-week').onclick = () => { if (reviewPeriod === 7) selectedWeekStart = shiftDate(selectedWeekStart, 7); else selectedTrendEnd = shiftDate(selectedTrendEnd, 30); renderWeekly(); };
     document.getElementById('week-picker').onchange = e => { if (e.target.value) { if (reviewPeriod === 7) selectedWeekStart = weekStartKey(e.target.value); else selectedTrendEnd = e.target.value; renderWeekly(); } };
     document.getElementById('export-csv').onclick = () => exportWeeklyReport(report, 'csv');
+    document.getElementById('weight-range').onclick = () => { longWeightView = !longWeightView; renderWeekly(); document.getElementById('weight-range').focus?.(); };
+    document.querySelectorAll('[data-protein-day]').forEach(link => link.onclick = event => {
+      event.preventDefault();
+      const d = report.days.find(day => day.date === link.dataset.proteinDay);
+      document.getElementById('trend-meals').innerHTML = '<strong>' + escapeHtml(formatShortDay(d.date)) + ' · ' + roundMacro(d.proteinG) + ' g recorded</strong>' + d.meals.map(m => '<div class="source-meal"><span>' + escapeHtml(m.name) + '</span><b>' + roundMacro(m.proteinG) + ' g</b></div>').join('');
+    });
     document.getElementById('export-json').onclick = () => exportWeeklyReport(report, 'json');
     const jump = document.getElementById('export-week-select');
     if (jump) jump.onchange = e => { selectedWeekStart = e.target.value; renderWeekly(); };
@@ -428,13 +437,63 @@
     return `<strong>${formatWeight(trend.averageKg)} kg</strong> average weight · ${trend.count} weigh-in${trend.count === 1 ? '' : 's'}${trend.changeKg == null ? '' : `<br>${signedWeight(trend.changeKg)} kg vs previous ${period} days`}`;
   }
 
-  function weightTrendSvg(days) {
-    const values = days.map((d, i) => d.weightKg == null ? null : { i, value: d.weightKg }).filter(Boolean);
-    if (!values.length) return '<div class="trend-empty">No morning weigh-ins logged in this period.</div>';
-    const min = Math.min(...values.map(p => p.value)), max = Math.max(...values.map(p => p.value)), range = max - min;
-    const points = values.map(p => ({ ...p, x: 12 + p.i * 276 / Math.max(1, days.length - 1), y: range ? 48 - ((p.value - min) / range) * 34 : 31 }));
-    const line = points.map(p => `${p.x},${p.y}`).join(' ');
-    return `<svg class="weight-chart" viewBox="0 0 300 72" role="img" aria-label="Weight trend for the selected period"><polyline class="trend-line" points="${line}"/>${points.map(p => `<circle class="trend-dot" cx="${p.x}" cy="${p.y}" r="3"><title>${formatWeight(p.value)} kg</title></circle>`).join('')}${days.map((d, i) => days.length > 7 && i !== days.length - 1 && (i % 7 !== 0 || i > days.length - 4) ? '' : `<text x="${12 + i * 276 / Math.max(1, days.length - 1)}" y="68">${escapeHtml(days.length <= 7 ? formatWeekdayLetter(d.date) : String(parseLocalDate(d.date).getDate()))}</text>`).join('')}</svg>`;
+  function weightWindow(end) {
+    const today = localDateKey(new Date());
+    if (end > today) end = today;
+    return Array.from({length: 90}, (_, i) => ({date: shiftDate(end, i - 89)}));
+  }
+
+  function trendChart(days, kind) {
+    const protein = kind === 'protein', target = Number(state.settings.proteinTarget) || 160;
+    const today = localDateKey(new Date()), count = days.length;
+    const raw = date => {
+      const d = state.days[date];
+      return protein ? (d?.entries?.length ? dayTotals(d).protein : null) : (hasWeight(d) ? Number(d.weightKg) : null);
+    };
+    const history = Array.from({length: 6}, (_, i) => raw(shiftDate(days[0].date, i - 6))).concat(days.map(d => raw(d.date)));
+    const values = history.slice(6);
+    if (!values.some(v => v != null)) return '<div class="trend-empty">' + (protein ? 'No meals logged' : 'No morning weigh-ins') + ' in this period.</div>';
+    const averages = days.map((d,i) => d.date > today ? null : averageNumbers(history.slice(i, i+7).filter(v => v != null)));
+    const known = [...values,...averages].filter(v => v != null);
+    const low = protein ? 0 : Math.floor(Math.min(...known)*2)/2 - 0.25;
+    const high = protein ? Math.max(target,...known)*1.12 : Math.ceil(Math.max(...known)*2)/2 + 0.25;
+    const width = protein ? Math.max(320,count*33) : 320, left=30, span=width-left-8, step=span/count;
+    const x=i=>left+(i+.5)*step, y=v=>102-88*(v-low)/(high-low);
+    let line='', pen=false;
+    averages.forEach((v,i)=>{ if(v==null) pen=false; else {line+=(pen?'L':'M')+x(i)+' '+y(v)+' ';pen=true;} });
+    const marks=values.map((v,i)=>v==null?'':protein
+      ? '<rect x="'+(x(i)-step*.31)+'" y="'+Math.min(101,y(v))+'" width="'+step*.62+'" height="'+Math.max(1,102-y(v))+'" rx="2" class="protein-bar"/>'
+      : '<circle cx="'+x(i)+'" cy="'+y(v)+'" r="2.7" class="weigh-in"/>').join('');
+    const scale = protein ? [0,target] : [Math.min(...values.filter(v=>v!=null)),Math.max(...values.filter(v=>v!=null))];
+    const labels=[...new Set(scale)].map(v=>'<text x="1" y="'+(y(v)+3)+'">'+(protein?roundMacro(v):formatWeight(v))+'</text>').join('');
+    const hits = protein ? days.map((d,i)=>values[i]==null?'':'<a href="#trend-meals" data-protein-day="'+d.date+'" aria-label="'+escapeAttr(formatShortDay(d.date)+': '+roundMacro(values[i])+' g protein. Show meals')+'"><rect x="'+(x(i)-step/2)+'" y="0" width="'+step+'" height="106" fill="transparent"/></a>').join('') : '';
+    const ticks=days.map((d,i)=> (count<=7 || i===0 || i===count-1 || (protein && i%5===0 && i<count-3)) ? '<text x="'+x(i)+'" y="119" text-anchor="middle">'+(count<=7?formatWeekdayLetter(d.date):parseLocalDate(d.date).getDate())+'</text>' : '').join('');
+    return '<div class="trend-scroll"><svg class="intake-plot" style="min-width:'+(protein && count>7 ? width : 0)+'px" viewBox="0 0 '+width+' 124" role="'+(protein?'group':'img')+'" aria-label="'+(protein?'Daily protein and seven-day average':'Morning weights in kg and seven-day average')+'">'+labels+
+      (protein?'<path class="target-rule" d="M'+left+' '+y(target)+'h'+span+'"/>':'')+marks+'<path class="rolling-line" d="'+line+'"/>'+averages.map((v,i)=>v!=null && averages[i-1]==null && averages[i+1]==null ? '<circle class="rolling-point" cx="'+x(i)+'" cy="'+y(v)+'" r="2.4"/>':'').join('')+ticks+hits+'</svg></div><small class="chart-note">'+
+      escapeHtml(formatShortDay(days[0].date)+' – '+formatShortDay(days[count-1].date))+(protein?' · Line: 7-day average. Tap a bar for meals.':' · '+values.filter(v=>v!=null).length+' weigh-ins')+'</small>';
+  }
+
+  function proteinSources(start, period) {
+    const collect=(from, breakdown)=> {
+      const sections=Object.fromEntries(MEAL_TYPES.map(k=>[k,{total:0,days:0,meals:new Map()}]));
+      for(let i=0;i<period;i++){
+        const seen=new Set();
+        for(const meal of state.days[shiftDate(from,i)]?.entries || []){
+          const row=sections[meal.category]; if(!row) continue;
+          const grams=num(meal.protein); row.total+=grams; seen.add(meal.category);
+          if(breakdown){const key=meal.recipeKey || mealFingerprint(meal), old=row.meals.get(key);
+            row.meals.set(key,{name:meal.name || meal.description || 'Meal',grams:(old?.grams||0)+grams,count:(old?.count||0)+1});}
+        }
+        seen.forEach(k=>sections[k].days++);
+      }
+      return sections;
+    };
+    const now=collect(start,true), prev=collect(shiftDate(start,-period),false), total=MEAL_TYPES.reduce((s,k)=>s+now[k].total,0);
+    return '<div class="card trend-card"><div class="trend-head"><strong>Where did my protein come from?</strong><small>Share of recorded protein · tap a section for meals</small></div>'+MEAL_TYPES.map(k=>{
+      const r=now[k],p=prev[k], share=total?100*r.total/total:0, avg=r.days?r.total/r.days:null, change=p.days && avg!=null ? avg-p.total/p.days:null;
+      const detail=r.days ? roundMacro(avg)+' g per logged '+(k==='snacks'?'snack day':k)+' · '+r.days+' logged day'+(r.days===1?'':'s') : 'No meals logged';
+      return '<details class="source-section"><summary><span>'+MEAL_LABELS[k]+'</span><b>'+Math.round(share)+'%</b><progress max="100" value="'+share+'"></progress></summary><small>'+detail+(change==null?'':' · '+(change>0?'+':'')+roundMacro(change)+' g vs previous '+period+' days')+'</small>'+[...r.meals.values()].sort((a,b)=>b.grams-a.grams).map(m=>'<div class="source-meal"><span>'+escapeHtml(m.name)+' <small>×'+m.count+'</small></span><b>'+roundMacro(m.grams)+' g</b></div>').join('')+'</details>';
+    }).join('')+'</div>';
   }
 
   async function exportWeeklyReport(report, format) {
