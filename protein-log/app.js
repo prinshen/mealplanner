@@ -503,7 +503,7 @@
     const add = (meal, date = '') => {
       const section = MEAL_TYPES.includes(meal.category) ? meal.category : 'snacks';
       if (category && section !== category) return;
-      const key = section + ':' + mealFingerprint(meal), current = variants.get(key);
+      const key = section + ':' + (meal.recipeKey || mealFingerprint(meal)), current = variants.get(key);
       const searchText = [meal.name, meal.description, ...(meal.ingredients || []).map(i => i.name)].join(' ').toLowerCase();
       if (!current) variants.set(key, { meal: { ...clone(meal), category: section }, date, count: date ? 1 : 0, searchText });
       else {
@@ -515,6 +515,11 @@
     };
     state.savedMeals.forEach(meal => add(meal));
     Object.entries(state.days).forEach(([date, day]) => (day.entries || []).forEach(meal => add(meal, date)));
+    // Counts come from the log; the recipe offered for reuse comes from its latest explicit save.
+    for (const template of state.savedMeals.filter(m => m.recipeKey)) {
+      const item = variants.get(template.category + ':' + template.recipeKey);
+      if (item) item.meal = clone(template);
+    }
     const terms = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
     return [...variants.values()].filter(item => terms.every(term => item.searchText.includes(term)))
       .sort((a, b) => b.count - a.count || b.date.localeCompare(a.date) || String(a.meal.name || '').localeCompare(String(b.meal.name || '')));
@@ -572,6 +577,8 @@
     let nameEdited = Boolean(originalMeal);
     let quality = originalMeal?.quality || (originalMeal?.source === 'manual' ? 'manual' : '');
     let ingredientBaseline = ingredientEditFingerprint(draft.ingredients);
+    const startingIngredients = clone(draft.ingredients);
+    let portionOrigins = startingIngredients.map((_, i) => i);
     const markIngredientEdit = () => { if (ingredientEditFingerprint(draft.ingredients) !== ingredientBaseline && quality !== 'manual') quality = 'edited'; };
     let entryMode = originalMeal ? 'ingredients' : 'choice';
     modalRoot.innerHTML = `<div class="modal-backdrop"><div class="sheet meal-sheet"><div class="brand-label">Protein Log</div><div class="sheet-head"><h2>${existing ? MEAL_LABELS[category] : `Add ${MEAL_LABELS[category]}`}</h2><button class="close-button" aria-label="Close meal editor" id="close-sheet">×</button></div><div id="food-editor"></div></div></div>`;
@@ -595,13 +602,29 @@
       document.getElementById('meal-name').oninput = e => { draft.name = e.target.value; nameEdited = true; };
       const toggle = document.getElementById('toggle-analysis'); if (toggle) toggle.onclick = () => { const fields = document.getElementById('analysis-fields'); fields.hidden = !fields.hidden; toggle.setAttribute('aria-expanded', String(!fields.hidden)); };
       const searchPrevious = document.getElementById('search-previous-meals');
+      if (showNutrition) {
+        const name = document.getElementById('meal-name');
+        name.insertAdjacentHTML?.('afterend', '<div><button type="button" class="manual-entry-button" id="suggest-title">Suggest name with Claude</button><button type="button" class="secondary-button" id="use-title" hidden></button></div>');
+        const suggest = document.getElementById('suggest-title'), accept = document.getElementById('use-title');
+        suggest.onclick = async () => {
+          syncDraft(); const names = draft.ingredients.map(i => i.name);
+          accept.hidden = true; suggest.disabled = true;
+          try {
+            const title = await suggestMealTitle(names);
+            if (!suggest.isConnected || JSON.stringify(draft.ingredients.map(i => i.name)) !== JSON.stringify(names)) return;
+            accept.textContent = 'Use: ' + title; accept.hidden = false;
+            accept.onclick = () => { name.value = draft.name = title; nameEdited = true; accept.hidden = true; };
+          } catch (error) { if (suggest.isConnected) showInlineError('food-error', error.message); }
+          finally { suggest.disabled = false; }
+        };
+      }
       if (searchPrevious) searchPrevious.onclick = () => openMealLibrary(category);
       document.getElementById('food-text').oninput = e => { draft.description = e.target.value; };
       document.getElementById('analyze-food').onclick = async () => {
         const text = document.getElementById('food-text').value.trim() || document.getElementById('meal-name').value.trim();
         if (!text) return showInlineError('food-error', 'Enter a meal name or description first.');
         const button = document.getElementById('analyze-food'); button.disabled = true; button.textContent = 'Analyzing…';
-        try { const result = await analyzeFood(text, category); draft = prepareIngredientEditor({ ...result, name: nameEdited && draft.name.trim() ? draft.name.trim() : result.name, description: text, manualTotals: { protein: false, calories: false } }); analyzedWithAI = true; quality = ''; ingredientBaseline = ingredientEditFingerprint(draft.ingredients); entryMode = 'analyzed'; renderFoodEditor(); }
+        try { const result = await analyzeFood(text, category); draft = prepareIngredientEditor({ ...result, name: nameEdited && draft.name.trim() ? draft.name.trim() : result.name, description: text, manualTotals: { protein: false, calories: false } }); portionOrigins = draft.ingredients.map(ing => startingIngredients.findIndex(j => ingredientNameKey(j.name) === ingredientNameKey(ing.name))); analyzedWithAI = true; quality = ''; ingredientBaseline = ingredientEditFingerprint(draft.ingredients); entryMode = 'analyzed'; renderFoodEditor(); }
         catch (err) { button.disabled = false; button.textContent = 'Analyze with Claude'; showInlineError('food-error', err.message || 'Could not analyze that meal.'); }
       };
       const manualButton = document.getElementById('manual-food'); if (manualButton) manualButton.onclick = () => { draft = prepareIngredientEditor({ ...draft, description: document.getElementById('food-text').value, ingredients: [blankIngredient()], manualTotals: { protein: false, calories: false } }); quality = 'manual'; ingredientBaseline = ingredientEditFingerprint(draft.ingredients); entryMode = 'manual'; renderFoodEditor(); };
@@ -612,7 +635,7 @@
       function chooseIngredient(index = null) {
         syncDraft();
         root.innerHTML = `<h3>${index === null ? 'Add ingredient' : 'Replace ' + escapeHtml(draft.ingredients[index].name)}</h3><div class="field"><input id="ingredient-search" type="search" placeholder="Search ingredients" aria-label="Search ingredients" /></div><div class="modal-actions"><button class="secondary-button" id="ingredient-back">Back</button><button class="primary-button" id="ingredient-new">Enter new ingredient</button></div><div id="ingredient-results"></div>`;
-        const add = ingredient => { if (index === null) draft.ingredients.push(clone(ingredient)); else draft.ingredients[index] = { ...clone(ingredient), amount: draft.ingredients[index].amount }; markIngredientEdit(); draft = calculateFromIngredients(draft); renderFoodEditor(); };
+        const add = ingredient => { if (index === null) { portionOrigins.push(-1); draft.ingredients.push(clone(ingredient)); } else draft.ingredients[index] = { ...clone(ingredient), amount: draft.ingredients[index].amount }; markIngredientEdit(); draft = calculateFromIngredients(draft); renderFoodEditor(); };
         const search = document.getElementById('ingredient-search');
         const update = () => {
           const items = ingredientLibrary(search.value);
@@ -635,7 +658,7 @@
         };
       }
       root.querySelectorAll('.ingredient-row input').forEach(input => input.addEventListener('input', () => { draft.ingredients = readIngredientRows(draft.ingredients); markIngredientEdit(); draft = calculateFromIngredients({ ...draft, manualTotals: { protein: false, calories: false } }); updateCalculatedTotal(); }));
-      root.querySelectorAll('[data-remove-ingredient]').forEach(button => button.onclick = () => { syncDraft(); draft.ingredients.splice(Number(button.dataset.removeIngredient), 1); if (!draft.ingredients.length) draft.ingredients.push(blankIngredient()); markIngredientEdit(); draft = calculateFromIngredients(draft); renderFoodEditor(); });
+      root.querySelectorAll('[data-remove-ingredient]').forEach(button => button.onclick = () => { syncDraft(); portionOrigins.splice(Number(button.dataset.removeIngredient), 1); draft.ingredients.splice(Number(button.dataset.removeIngredient), 1); if (!draft.ingredients.length) draft.ingredients.push(blankIngredient()); markIngredientEdit(); draft = calculateFromIngredients(draft); renderFoodEditor(); });
       const del = document.getElementById('delete-entry'); if (del) del.onclick = () => { const d = getDay(selectedDate); d.entries = d.entries.filter(e => e.id !== existing.id); saveState(); closeModal(); renderToday(); };
       document.getElementById('save-entry').onclick = () => {
         syncDraft();
@@ -645,6 +668,22 @@
         const description = draft.description.trim();
         const entry = { id: existing?.id || uid(), category, description, name: draft.name.trim() || description, quality, protein: num(draft.protein), calories: num(draft.calories), manualTotals: { protein: false, calories: false }, ingredients: activeIngredients(draft.ingredients), source: analyzedWithAI ? 'ai' : (originalMeal?.source || 'manual'), ...(existing?.savedMealId ? { savedMealId: existing.savedMealId } : {}) };
         const knownIngredients = new Set(ingredientLibrary().map(item => ingredientKey(item.ingredient)));
+        const recipeKey = originalMeal?.recipeKey || mealFingerprint(originalMeal || entry);
+        entry.recipeKey = recipeKey;
+        const templateIndex = state.savedMeals.findIndex(m => m.category === category && m.recipeKey === recipeKey);
+        const prior = state.savedMeals[templateIndex] || mealLibrary('', category).find(x => (x.meal.recipeKey || mealFingerprint(x.meal)) === recipeKey)?.meal;
+        const changed = !!originalMeal && ingredientEditFingerprint(startingIngredients) !== ingredientEditFingerprint(entry.ingredients);
+        if (!prior || templateIndex < 0 || changed || (originalMeal && entry.name !== (originalMeal.name || originalMeal.description))) {
+          const base = prior ? prepareIngredientEditor(normalizeExisting(prior)) : null;
+          const ingredients = !changed && base ? base.ingredients : entry.ingredients.map((ing, i) => {
+            const origin = startingIngredients[portionOrigins[i]];
+            const match = origin && base?.ingredients.find(j => ingredientKey(j) === ingredientKey(origin));
+            return { ...ing, amount: match ? match.amount : ing.amount };
+          });
+          const template = calculateFromIngredients({ ...clone(entry), recipeKey, ingredients: clone(ingredients),
+            name: originalMeal && prior && entry.name === (originalMeal.name || originalMeal.description) ? prior.name : entry.name });
+          if (templateIndex < 0) state.savedMeals.push(template); else state.savedMeals[templateIndex] = template;
+        }
         const newNames = [...new Set(entry.ingredients
           .filter(ingredient => !knownIngredients.has(ingredientKey(ingredient)))
           .map(ingredient => ingredient.name))];
@@ -666,12 +705,22 @@
     if (!apiKey) { const demo = localEstimate(text); if (demo) return demo; throw new Error('Add your Claude API key in Settings first.'); }
     if (!apiKey.startsWith('sk-ant-')) throw new Error('That does not look like an Anthropic API key. It should begin with sk-ant-.');
     const system = `You are the nutrition analysis engine for a personal iPhone food tracker. The user may write in English or Danish. Estimate practical everyday nutrition with protein as the primary measurement and calories as the only secondary measurement. Explicit quantities are constraints, not a total meal budget. A weight directly before an ingredient belongs to that ingredient alone, even when other foods follow with "and", "with", "og" or "med". Keep every stated ingredient weight exactly; estimate sensible portions independently only for ingredients with no stated amount. Example: "200g of chicken and cabbage with bread" means chicken amount=200, plus an estimated cabbage portion and an estimated bread portion; NEVER divide the 200g among chicken, cabbage and bread. Danish example: "200 g kylling med kål og brød" also fixes chicken at 200 g. Only distribute a weight across a mixed dish when the user explicitly describes a total, combined weight or a serving of that mixed dish (for example "200g in total of chicken, cabbage and bread" or "200g chicken and cabbage stew"). Preserve separate weights such as "200g chicken and 50g bread". Do not shrink stated weights to fit typical portions or calorie assumptions. Use grams for ingredient amounts whenever possible; convert pieces, scoops and millilitres to a practical edible gram weight. Return ONLY valid JSON exactly shaped as: {"name":"short meal name","protein":0,"calories":0,"ingredients":[{"name":"ingredient","amount":0,"proteinPer100g":0,"caloriesPer100g":0}]}. Do not return any other nutrition fields. Totals should equal the sum of amount/100 multiplied by each per-100g value, allowing normal rounding.`;
-    let response;
-    try { response = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' }, body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 1400, temperature: 0, system, messages: [{ role: 'user', content: `Meal type: ${mealType}.\nFood: ${text}` }] }) }); } catch { throw new Error('Could not reach Claude. Check your internet connection and try again.'); }
-    if (!response.ok) { let detail = ''; try { detail = (await response.json())?.error?.message || ''; } catch {} if (response.status === 401) throw new Error('Claude rejected the API key. Check the key in Settings.'); if (response.status === 429) throw new Error('Claude rate limit reached. Try again shortly.'); throw new Error(detail || `Claude API returned ${response.status}.`); }
-    const data = await response.json(); let output = data?.content?.find(block => block.type === 'text')?.text || ''; output = output.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-    let raw; try { raw = JSON.parse(output); } catch { throw new Error('Claude returned nutrition data in an unexpected format. Try Analyze again.'); }
+    const output = await claudeText(apiKey, system, `Meal type: ${mealType}.\nFood: ${text}`, 1400);
+    let raw; try { raw = JSON.parse(output.replace(/^\x60{3}(?:json)?\s*/i, '').replace(/\s*\x60{3}$/, '')); } catch { throw new Error('Claude returned nutrition data in an unexpected format. Try Analyze again.'); }
     const normalized = normalizeAIResult(raw); if (!normalized) throw new Error('Claude returned incomplete nutrition data. Try Analyze again.'); return normalized;
+  }
+  async function suggestMealTitle(names) {
+    const key = (state.settings.claudeApiKey || '').trim();
+    if (!key) throw new Error('Add your Claude API key in Settings to suggest a name.');
+    const title = await claudeText(key, 'Give one short meal title based only on these ingredient names. Preserve distinctive product names and the language of the ingredients, including Danish. Return plain text only.', JSON.stringify(names), 80);
+    if (!title) throw new Error('No name suggested. Try again.');
+    return title.slice(0, 120);
+  }
+  async function claudeText(apiKey, system, prompt, maxTokens) {
+    let response;
+    try { response = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' }, body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: maxTokens, temperature: 0, system, messages: [{ role: 'user', content: prompt }] }) }); } catch { throw new Error('Could not reach Claude. Check your internet connection and try again.'); }
+    if (!response.ok) { let detail = ''; try { detail = (await response.json())?.error?.message || ''; } catch {} if (response.status === 401) throw new Error('Claude rejected the API key. Check the key in Settings.'); if (response.status === 429) throw new Error('Claude rate limit reached. Try again shortly.'); throw new Error(detail || `Claude API returned ${response.status}.`); }
+    const data = await response.json(); return (data?.content?.find(block => block.type === 'text')?.text || '').trim();
   }
 
   function normalizeAIResult(raw) {
