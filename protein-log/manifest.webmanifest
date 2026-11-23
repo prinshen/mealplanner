@@ -1,7 +1,7 @@
 {
   "name": "Protein Log",
   "short_name": "Protein Log",
-  "description": "A minimal personal protein tracker with AI-assisted meal estimates.",
+  "description": "Din kost- og vægtlog med valgfrie AI-skøn.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

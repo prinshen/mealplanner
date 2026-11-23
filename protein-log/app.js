@@ -7,7 +7,7 @@
   let storageBlocked = false;
   let storageWarning = '';
   const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snacks'];
-  const MEAL_LABELS = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snacks: 'Snacks' };
+  const MEAL_LABELS = { breakfast: 'Morgenmad', lunch: 'Frokost', dinner: 'Aftensmad', snacks: 'Mellemmåltider' };
   const state = loadState();
   let activeTab = 'today';
   let selectedDate = localDateKey(new Date());
@@ -56,7 +56,7 @@
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw == null) {
-        if (localStorage.getItem(RECOVERY_KEY) || localStorage.getItem(RESTORE_RECOVERY_KEY)) throw new Error('Primary data missing');
+        if (localStorage.getItem(RECOVERY_KEY) || localStorage.getItem(RESTORE_RECOVERY_KEY)) throw new Error('Den primære log mangler');
         return defaultState();
       }
       const parsed = JSON.parse(raw);
@@ -65,12 +65,12 @@
       return { ...parsed, settings: { ...base.settings, ...(parsed.settings || {}) }, days: parsed.days || {}, savedMeals: Array.isArray(parsed.savedMeals) ? parsed.savedMeals : [], copiedMeal: parsed.copiedMeal && typeof parsed.copiedMeal.name === 'string' && Array.isArray(parsed.copiedMeal.ingredients) ? mealCopySnapshot(parsed.copiedMeal) : null };
     } catch {
       storageBlocked = true;
-      storageWarning = 'Your saved data could not be read. Nothing has been overwritten. Open Settings to restore a backup or local recovery copy. New changes cannot be saved until recovery.';
+      storageWarning = 'Dine data kunne ikke læses. Intet er overskrevet. Gendan en sikkerhedskopi under Indstillinger, før du gemmer nye ændringer.';
       return defaultState();
     }
   }
   function saveState() {
-    if (storageBlocked) { window.alert(storageWarning); throw new Error('Storage needs recovery'); }
+    if (storageBlocked) { window.alert(storageWarning); throw new Error('Loggen skal gendannes'); }
     try {
       const previous = localStorage.getItem(STORAGE_KEY);
       const next = JSON.stringify(state);
@@ -81,14 +81,14 @@
       }
       localStorage.setItem(STORAGE_KEY, next);
     } catch (error) {
-      window.alert('This change could not be saved. Do not close the app: download a full backup in Settings now. Your previously saved data has not been cleared.');
+      window.alert('Ændringen kunne ikke gemmes. Lad appen være åben, og hent en fuld sikkerhedskopi under Indstillinger. Dine tidligere data er ikke slettet.');
       throw error;
     }
   }
 
   function validateStoredData(data) {
     const object = value => value && typeof value === 'object' && !Array.isArray(value);
-    const fail = () => { throw new Error('This is not a valid full Protein Log backup. No data was changed.'); };
+    const fail = () => { throw new Error('Filen er ikke en gyldig sikkerhedskopi fra Protein Log. Ingen data blev ændret.'); };
     const safeKeys = value => { if (!value || typeof value !== 'object') return; Object.keys(value).forEach(key => { if (['__proto__', 'constructor', 'prototype'].includes(key)) fail(); safeKeys(value[key]); }); };
     safeKeys(data);
     if (!object(data) || !object(data.days) || !object(data.settings) || !Array.isArray(data.savedMeals)) fail();
@@ -135,7 +135,7 @@
   }
   function readBackup(text) {
     const backup = JSON.parse(text);
-    if (backup?.app !== 'Protein Log' || backup.backupVersion !== 1) throw new Error('Choose a full Protein Log backup, not a weekly report.');
+    if (backup?.app !== 'Protein Log' || backup.backupVersion !== 1) throw new Error('Vælg en fuld sikkerhedskopi fra Protein Log, ikke en ugerapport.');
     return validateStoredData(backup.data);
   }
   function restoreData(data) {
@@ -151,31 +151,31 @@
   function confirmRestore(data) {
     validateStoredData(data);
     const days = Object.keys(data.days).length, meals = Object.values(data.days).reduce((sum, day) => sum + day.entries.length, 0);
-    if (!window.confirm(`Replace the current log with this backup (${days} days, ${meals} meals)? This is a replacement, not a merge. A local copy of your current data will be kept before restoring.`)) return;
-    restoreData(data); applyTheme(); renderSettings(); toast('Backup restored');
+    if (!window.confirm(`Erstat den nuværende log med denne sikkerhedskopi (${days} dage, ${meals} måltider)? Loggen bliver erstattet, ikke flettet. Din nuværende log gemmes først som en lokal kopi.`)) return;
+    restoreData(data); applyTheme(); renderSettings(); toast('Sikkerhedskopien er gendannet');
   }
   function backupSettingsHtml() {
-    const last = state.lastBackupAt ? `Last backup export: ${new Date(state.lastBackupAt).toLocaleString()}` : 'No full backup exported yet';
-    return `<div class="section-kicker">Data safety</div><div class="card settings-group"><strong>Back up your entire log</strong><p class="settings-help">${escapeHtml(last)}. Save a full backup to Files / iCloud Drive regularly and before changing phones or clearing Safari. Local recovery copies cannot survive cleared browser data. Backups contain private nutrition and weight data; your Claude API key is excluded.</p><button class="primary-button" id="backup-all">Export full backup</button><div class="field"><label for="restore-backup">Restore from a full backup</label><input id="restore-backup" type="file" accept=".json,application/json" /></div><div class="export-actions"><button class="secondary-button" id="recover-last">Recover previous save</button><button class="secondary-button" id="recover-restore">Undo last restore</button></div><p class="settings-help">Recovery replaces the log after confirmation. Export a full backup first if you want to keep both versions.</p></div>`;
+    const last = state.lastBackupAt ? `Seneste sikkerhedskopi: ${new Date(state.lastBackupAt).toLocaleString('da-DK')}` : 'Ingen fuld sikkerhedskopi endnu';
+    return `<div class="section-kicker">Datasikkerhed</div><div class="card settings-group"><strong>Sikkerhedskopi af hele loggen</strong><p class="settings-help">${escapeHtml(last)}. Gem jævnligt en kopi i Arkiver eller iCloud Drive, især før du skifter telefon eller rydder Safari. Lokale kopier slettes sammen med browserdata. Kopien indeholder dine kost- og vægtdata, men ikke din Claude-nøgle.</p><button class="primary-button" id="backup-all">Eksportér sikkerhedskopi</button><div class="field"><label for="restore-backup">Gendan fra sikkerhedskopi</label><input id="restore-backup" type="file" accept=".json,application/json" /></div><div class="export-actions"><button class="secondary-button" id="recover-last">Gendan forrige lagring</button><button class="secondary-button" id="recover-restore">Fortryd seneste gendannelse</button></div><p class="settings-help">Gendannelse erstatter loggen efter din bekræftelse. Eksportér først en sikkerhedskopi, hvis du vil beholde begge versioner.</p></div>`;
   }
   function bindBackupSettings() {
     document.getElementById('backup-all').onclick = async () => {
       try {
-        if (storageBlocked) throw new Error('Restore your data first. Export is blocked so an empty log cannot be mistaken for a backup.');
+        if (storageBlocked) throw new Error('Gendan dine data først. En tom log kan ikke eksporteres som sikkerhedskopi.');
         const backup = fullBackup();
         if (!await shareOrDownload(JSON.stringify(backup, null, 2), 'application/json', `protein-log-full-backup-${localDateKey(new Date())}.json`)) return;
-        state.lastBackupAt = backup.createdAt; saveState(); renderSettings(); toast('Backup export started — save it to Files');
-      } catch (error) { window.alert(error.message || 'Backup could not be exported.'); }
+        state.lastBackupAt = backup.createdAt; saveState(); renderSettings(); toast('Gem sikkerhedskopien i Arkiver');
+      } catch (error) { window.alert(error.message || 'Sikkerhedskopien kunne ikke eksporteres.'); }
     };
     document.getElementById('restore-backup').onchange = async event => {
       const file = event.target.files?.[0]; if (!file) return;
-      try { if (file.size > 20 * 1024 * 1024) throw new Error('Backup file is too large.'); confirmRestore(readBackup(await file.text())); }
-      catch (error) { window.alert(`Restore failed: ${error.message}`); }
+      try { if (file.size > 20 * 1024 * 1024) throw new Error('Sikkerhedskopien er for stor.'); confirmRestore(readBackup(await file.text())); }
+      catch (error) { window.alert(`Gendannelse mislykkedes: ${error.message}`); }
       finally { event.target.value = ''; }
     };
     const recovery = (id, key) => { document.getElementById(id).onclick = () => {
-      try { const text = localStorage.getItem(key); if (!text) throw new Error('No local recovery copy is available.'); confirmRestore(validateStoredData(JSON.parse(text))); }
-      catch (error) { window.alert(`Recovery failed: ${error.message}`); }
+      try { const text = localStorage.getItem(key); if (!text) throw new Error('Der findes ingen lokal gendannelseskopi.'); confirmRestore(validateStoredData(JSON.parse(text))); }
+      catch (error) { window.alert(`Gendannelse mislykkedes: ${error.message}`); }
     }; };
     recovery('recover-last', RECOVERY_KEY); recovery('recover-restore', RESTORE_RECOVERY_KEY);
   }
@@ -196,17 +196,17 @@
     const weightTrend = rollingWeightSummary(date, averagePeriod);
     const activities = day.activities || {};
     const html = `<section class="day-view">
-      <div class="brand-label">Protein Log</div><div class="date-nav"><button class="date-button" id="prev-day" aria-label="Previous day">‹</button><div class="date-center"><label class="date-click-target" for="date-picker"><div class="date-label">${escapeHtml(isToday ? 'Today' : formatDate(date))}</div><div class="date-sub">${escapeHtml(formatLongDate(date))}</div></label><input class="date-picker" id="date-picker" type="date" max="${today}" value="${date}" /></div><button class="date-button" id="next-day" aria-label="Next day" ${canNext ? '' : 'disabled'}>›</button></div>
-      <div class="card progress-card"><div class="progress-ring" style="--progress:${Math.round(pct * 360)}deg;--protein-color:${proteinColor(totals.protein, proteinTarget)}"><div class="ring-content"><div class="ring-number">${roundMacro(proteinRemaining)} g</div><div class="ring-target">protein left</div></div></div><div class="hero-stats"><strong>${roundMacro(totals.protein)} g eaten</strong><div class="ring-consumed">Target ${roundMacro(proteinTarget)} g</div><div class="calorie-summary"><div><strong>${Math.round(totals.calories).toLocaleString()} kcal</strong><span>/ ${Math.round(calorieTarget).toLocaleString()} kcal</span></div><progress class="calorie-bar" aria-label="Calories toward daily target" max="${calorieTarget}" value="${Math.min(calorieTarget, totals.calories)}"></progress></div></div></div><details class="daily-averages"><summary>Recorded averages</summary><div class="average-selector" aria-label="Average period"><button data-average-period="7" aria-pressed="${averagePeriod === 7}">7 days</button><button data-average-period="30" aria-pressed="${averagePeriod === 30}">30 days</button></div><div class="average-stat">${average.count ? `<strong>${roundMacro(average.protein)} g protein · ${Math.round(average.calories)} kcal</strong> average recorded intake<br>${average.count} logged day${average.count === 1 ? '' : 's'} · last ${averagePeriod} days` : `No recorded meals in the last ${averagePeriod} days`}</div><div class="weight-average">${renderWeightAverage(weightTrend, averagePeriod)}</div></details>
+      <div class="brand-label">Protein Log</div><div class="date-nav"><button class="date-button" id="prev-day" aria-label="Forrige dag">‹</button><div class="date-center"><label class="date-click-target" for="date-picker"><div class="date-label">${escapeHtml(isToday ? 'I dag' : formatDate(date))}</div><div class="date-sub">${escapeHtml(formatLongDate(date))}</div></label><input class="date-picker" id="date-picker" type="date" max="${today}" value="${date}" /></div><button class="date-button" id="next-day" aria-label="Næste dag" ${canNext ? '' : 'disabled'}>›</button></div>
+      <div class="card progress-card"><div class="progress-ring" style="--progress:${Math.round(pct * 360)}deg;--protein-color:${proteinColor(totals.protein, proteinTarget)}"><div class="ring-content"><div class="ring-number">${roundMacro(proteinRemaining)} g</div><div class="ring-target">protein tilbage</div></div></div><div class="hero-stats"><strong>${roundMacro(totals.protein)} g spist</strong><div class="ring-consumed">Mål ${roundMacro(proteinTarget)} g</div><div class="calorie-summary"><div><strong>${Math.round(totals.calories).toLocaleString('da-DK')} kcal</strong><span>/ ${Math.round(calorieTarget).toLocaleString('da-DK')} kcal</span></div><progress class="calorie-bar" aria-label="Kalorier i forhold til dagens pejlemærke" max="${calorieTarget}" value="${Math.min(calorieTarget, totals.calories)}"></progress></div></div></div><details class="daily-averages"><summary>Registrerede gennemsnit</summary><div class="average-selector" aria-label="Periode"><button data-average-period="7" aria-pressed="${averagePeriod === 7}">7 dage</button><button data-average-period="30" aria-pressed="${averagePeriod === 30}">30 dage</button></div><div class="average-stat">${average.count ? `<strong>${roundMacro(average.protein)} g protein · ${Math.round(average.calories)} kcal</strong> i gennemsnit<br>Registrerede dage: ${average.count} · seneste ${averagePeriod} dage` : `Ingen registrerede måltider de seneste ${averagePeriod} dage`}</div><div class="weight-average">${renderWeightAverage(weightTrend, averagePeriod)}</div></details>
       ${!hasWeight(day) ? weightCardHtml(day) : ''}
-      ${!day.creatine ? supplementCardHtml('creatine', 'Creatine', day.creatine) : ''}
-      ${!day.vitamins ? supplementCardHtml('vitamins', 'Vitamins', day.vitamins) : ''}
-      ${state.copiedMeal ? `<div class="card copied-meal-card"><div class="copied-meal-heading"><div><small>Copied meal</small><strong>${escapeHtml(state.copiedMeal.name)}</strong></div><button class="close-button" id="clear-copied-meal" aria-label="Clear copied meal">×</button></div><div class="copy-controls"><select id="paste-category" aria-label="Paste meal section">${mealOptions(state.copiedMeal.category)}</select><button class="primary-button" id="paste-meal">Paste meal</button></div><div class="copy-footer"><span>To: ${escapeHtml(isToday ? 'Today' : formatDate(date))}</span>${isToday ? '' : '<button class="copy-today" id="copy-go-today">Go to today</button>'}</div></div>` : ''}
-      <h2 class="meals-heading">Meals</h2>${MEAL_TYPES.map(type => renderMealSection(type, day)).join('')}
-      <button class="card quick-add-toggle find-meal-button" id="find-meal">Find a meal <span aria-hidden="true">⌕</span></button>
-      <div class="card activity-card"><div class="activity-head"><strong>Activity</strong><small>Optional markers for this day</small></div><div class="activity-grid">${activityToggle('strength', 'Strength workout', activities.strength)}${activityToggle('run', 'Run', activities.run)}${activityToggle('longBike', 'Longer bike ride', activities.longBike)}</div></div>
-      ${day.creatine ? supplementCardHtml('creatine', 'Creatine', day.creatine) : ''}
-      ${day.vitamins ? supplementCardHtml('vitamins', 'Vitamins', day.vitamins) : ''}
+      ${!day.creatine ? supplementCardHtml('creatine', 'Kreatin', day.creatine) : ''}
+      ${!day.vitamins ? supplementCardHtml('vitamins', 'Vitaminer', day.vitamins) : ''}
+      ${state.copiedMeal ? `<div class="card copied-meal-card"><div class="copied-meal-heading"><div><small>Kopieret måltid</small><strong>${escapeHtml(state.copiedMeal.name)}</strong></div><button class="close-button" id="clear-copied-meal" aria-label="Fjern kopieret måltid">×</button></div><div class="copy-controls"><select id="paste-category" aria-label="Vælg måltidskategori">${mealOptions(state.copiedMeal.category)}</select><button class="primary-button" id="paste-meal">Indsæt måltid</button></div><div class="copy-footer"><span>Til: ${escapeHtml(isToday ? 'I dag' : formatDate(date))}</span>${isToday ? '' : '<button class="copy-today" id="copy-go-today">Gå til i dag</button>'}</div></div>` : ''}
+      <h2 class="meals-heading">Måltider</h2>${MEAL_TYPES.map(type => renderMealSection(type, day)).join('')}
+      <button class="card quick-add-toggle find-meal-button" id="find-meal">Find et måltid <span aria-hidden="true">⌕</span></button>
+      <div class="card activity-card"><div class="activity-head"><strong>Aktivitet</strong><small>Dagens aktiviteter</small></div><div class="activity-grid">${activityToggle('strength', 'Styrketræning', activities.strength)}${activityToggle('run', 'Løb', activities.run)}${activityToggle('longBike', 'Længere cykeltur', activities.longBike)}</div></div>
+      ${day.creatine ? supplementCardHtml('creatine', 'Kreatin', day.creatine) : ''}
+      ${day.vitamins ? supplementCardHtml('vitamins', 'Vitaminer', day.vitamins) : ''}
       ${hasWeight(day) ? weightCardHtml(day) : ''}
     </section>`;
     if (previewDate) return html;
@@ -218,8 +218,8 @@
     document.getElementById('date-picker').onchange = e => { if (e.target.value) { selectedDate = e.target.value; renderToday(); } };
     document.getElementById('vitamins').onchange = e => { day.vitamins = e.target.checked; saveState(); renderToday(); };
     document.getElementById('creatine').onchange = e => { day.creatine = e.target.checked; saveState(); renderToday(); };
-    document.getElementById('save-weight').onclick = () => { const value = num(document.getElementById('morning-weight').value); if (value <= 0) return toast('Enter a valid weight in kg'); day.weightKg = Math.round(value * 10) / 10; saveState(); renderToday(); toast('Morning weight saved'); };
-    const deleteWeight = document.getElementById('delete-weight'); if (deleteWeight) deleteWeight.onclick = () => { delete day.weightKg; saveState(); renderToday(); toast('Weight entry deleted'); };
+    document.getElementById('save-weight').onclick = () => { const value = num(document.getElementById('morning-weight').value); if (value <= 0) return toast('Indtast en gyldig vægt i kg'); day.weightKg = Math.round(value * 10) / 10; saveState(); renderToday(); toast('Morgenvægten er gemt'); };
+    const deleteWeight = document.getElementById('delete-weight'); if (deleteWeight) deleteWeight.onclick = () => { delete day.weightKg; saveState(); renderToday(); toast('Vejningen er slettet'); };
     document.querySelectorAll('[data-activity]').forEach(input => input.onchange = () => { day.activities = { ...(day.activities || {}), [input.dataset.activity]: input.checked }; saveState(); });
     document.querySelectorAll('[data-add-meal]').forEach(btn => btn.onclick = () => openFoodModal(btn.dataset.addMeal));
     document.querySelectorAll('[data-entry-id]').forEach(btn => btn.onclick = () => openExistingEntry(btn.dataset.entryId));
@@ -229,7 +229,7 @@
       const category = document.getElementById('paste-category').value;
       getDay(date).entries.push({ ...mealCopySnapshot(state.copiedMeal), id: uid(), category });
       state.copiedMeal = null;
-      saveState(); renderToday(); toast('Meal pasted');
+      saveState(); renderToday(); toast('Måltidet er indsat');
     };
     const clearCopy = document.getElementById('clear-copied-meal');
     if (clearCopy) clearCopy.onclick = () => { state.copiedMeal = null; saveState(); renderToday(); };
@@ -249,7 +249,7 @@
     return '#b1a35c';
   }
   function weightCardHtml(day) {
-    return `<div class="card weight-card"><div><strong>Morning body weight</strong><small>${hasWeight(day) ? `${formatWeight(day.weightKg)} kg logged for this day` : 'Optional daily weigh-in'}</small></div><div class="weight-controls"><div class="weight-input"><input id="morning-weight" aria-label="Morning body weight in kilograms" inputmode="decimal" placeholder="82,7" value="${hasWeight(day) ? escapeAttr(day.weightKg) : ''}" /><span>kg</span></div><button class="secondary-button" id="save-weight">Save</button>${hasWeight(day) ? '<button class="weight-delete" id="delete-weight" aria-label="Delete morning weight">×</button>' : ''}</div></div>`;
+    return `<div class="card weight-card"><div><strong>Morgenvægt</strong><small>${hasWeight(day) ? `${formatWeight(day.weightKg)} kg registreret` : 'Dagens vejning er valgfri'}</small></div><div class="weight-controls"><div class="weight-input"><input id="morning-weight" aria-label="Morgenvægt i kg" inputmode="decimal" placeholder="82,7" value="${hasWeight(day) ? escapeAttr(formatWeight(day.weightKg)) : ''}" /><span>kg</span></div><button class="secondary-button" id="save-weight">Gem</button>${hasWeight(day) ? '<button class="weight-delete" id="delete-weight" aria-label="Slet morgenvægt">×</button>' : ''}</div></div>`;
   }
   function supplementCardHtml(id, label, checked) {
     return `<label class="card creatine-row"><input id="${id}" type="checkbox" ${checked ? 'checked' : ''}/><span class="checkmark">✓</span><span><strong>${label}</strong></span></label>`;
@@ -322,11 +322,11 @@
   function renderMealSection(type, day) {
     const entries = day.entries.filter(e => e.category === type);
     const protein = sum(entries, 'protein'), calories = sum(entries, 'calories');
-    const detail = entries.length ? (entries.length === 1 ? escapeHtml(entries[0].name || 'Meal') : entries.length + ' meals') + ' · ' + roundMacro(protein) + ' g protein' : 'No meals logged';
-    const add = '<button class="add-button" data-add-meal="' + type + '">+ Add</button>';
+    const detail = entries.length ? (entries.length === 1 ? escapeHtml(entries[0].name || 'Måltid') : entries.length + ' måltider') + ' · ' + roundMacro(protein) + ' g protein' : 'Ingen måltider registreret';
+    const add = '<button class="add-button" data-add-meal="' + type + '">+ Tilføj</button>';
     const heading = '<span class="meal-heading"><strong class="meal-title">' + MEAL_LABELS[type] + '</strong><small class="meal-subtitle">' + detail + '</small></span>';
     if (!entries.length) return '<div class="card meal-card meal-header">' + heading + add + '</div>';
-    return `<details class="card meal-card"><summary class="meal-header">${heading}<span class="row-action">Open</span></summary>${entries.map(e => `<button class="meal-entry" data-entry-id="${escapeAttr(e.id)}"><span><strong>${escapeHtml(e.name || e.description || 'Meal')}</strong>${mealBadge(e)}</span><span class="entry-macros"><strong>${roundMacro(e.protein)} g protein</strong><small>${Math.round(num(e.calories))} kcal</small></span></button>`).join('')}<div class="section-footer">${Math.round(calories)} kcal ${add}</div></details>`;
+    return `<details class="card meal-card"><summary class="meal-header">${heading}<span class="row-action">Åbn</span></summary>${entries.map(e => `<button class="meal-entry" data-entry-id="${escapeAttr(e.id)}"><span><strong>${escapeHtml(e.name || e.description || 'Måltid')}</strong>${mealBadge(e)}</span><span class="entry-macros"><strong>${roundMacro(e.protein)} g protein</strong><small>${Math.round(num(e.calories))} kcal</small></span></button>`).join('')}<div class="section-footer">${Math.round(calories)} kcal ${add}</div></details>`;
   }
 
   function activityToggle(key, label, checked) {
@@ -336,28 +336,28 @@
   function renderWeekly() {
     const start = reviewPeriod === 7 ? selectedWeekStart : shiftDate(selectedTrendEnd, -29);
     const report = buildWeeklyReport(start, reviewPeriod);
-    const comparison = reviewPeriod === 7 ? 'previous week' : 'previous 30 days';
+    const comparison = reviewPeriod === 7 ? 'sidste uge' : 'de foregående 30 dage';
     const s = report.summary;
     app.innerHTML = `<section class="weekly-view">
-      <div class="page-head"><div><h1>Trends</h1><div class="date-sub">${escapeHtml(report.dateRange)}</div></div></div>
-      <div class="average-selector review-selector" aria-label="Trend period"><button id="review-7" aria-pressed="${reviewPeriod === 7}">7 days</button><button id="review-30" aria-pressed="${reviewPeriod === 30}">30 days</button></div>
-      ${reviewPeriod === 7 ? `<div class="field"><label for="export-week-select">Jump to a week · export status</label><select id="export-week-select">${exportWeekOptions()}</select></div>` : ''}
-      <div class="week-nav"><button class="date-button" id="prev-week" aria-label="Previous period">‹</button><label class="week-picker-label" for="week-picker"><strong>${reviewPeriod === 7 ? escapeHtml(formatWeekLabel(selectedWeekStart)) : '30 days ending ' + escapeHtml(formatShortDay(selectedTrendEnd))}</strong><span>${reviewPeriod === 7 ? 'Select week' : 'Select end date'}</span></label><input id="week-picker" class="week-picker" type="date" value="${reviewPeriod === 7 ? selectedWeekStart : selectedTrendEnd}"/><button class="date-button" id="next-week" aria-label="Next period">›</button></div>
+      <div class="page-head"><div><h1>Udvikling</h1><div class="date-sub">${escapeHtml(report.dateRange)}</div></div></div>
+      <div class="average-selector review-selector" aria-label="Periode"><button id="review-7" aria-pressed="${reviewPeriod === 7}">7 dage</button><button id="review-30" aria-pressed="${reviewPeriod === 30}">30 dage</button></div>
+      ${reviewPeriod === 7 ? `<div class="field"><label for="export-week-select">Vælg uge · eksportstatus</label><select id="export-week-select">${exportWeekOptions()}</select></div>` : ''}
+      <div class="week-nav"><button class="date-button" id="prev-week" aria-label="Forrige periode">‹</button><label class="week-picker-label" for="week-picker"><strong>${reviewPeriod === 7 ? escapeHtml(formatWeekLabel(selectedWeekStart)) : '30 dage frem til ' + escapeHtml(formatShortDay(selectedTrendEnd))}</strong><span>${reviewPeriod === 7 ? 'Vælg uge' : 'Vælg slutdato'}</span></label><input id="week-picker" class="week-picker" type="date" value="${reviewPeriod === 7 ? selectedWeekStart : selectedTrendEnd}"/><button class="date-button" id="next-week" aria-label="Næste periode">›</button></div>
       <div class="weekly-grid">
-        <div class="card metric-card primary-metric"><span>Average morning weight</span><strong>${s.averageWeightKg == null ? '—' : `${formatWeight(s.averageWeightKg)} kg`}</strong><small>${s.weightEntries} weigh-in${s.weightEntries === 1 ? '' : 's'}${s.weightChangeKg == null ? '' : ` · ${signedWeight(s.weightChangeKg)} kg vs ${comparison}`}</small></div>
-        <div class="card metric-card"><span>Average recorded protein</span><strong>${s.loggedNutritionDays ? `${roundMacro(s.averageProteinG)} g` : '—'}</strong><small>${s.loggedNutritionDays} logged day${s.loggedNutritionDays === 1 ? '' : 's'}</small></div>
-        <div class="card metric-card"><span>Average recorded calories</span><strong>${s.loggedNutritionDays ? Math.round(s.averageCalories).toLocaleString() : '—'}</strong><small>${s.loggedNutritionDays ? 'kcal / logged day' : 'No meals logged'}</small></div>
-        <div class="card metric-card"><span>Workouts</span><strong>${s.strengthWorkouts + s.runs + s.longBikeRides}</strong><small>${s.strengthWorkouts} strength · ${s.runs} run · ${s.longBikeRides} bike</small></div>
-        <div class="card metric-card"><span>Creatine</span><strong>${s.creatineDays}/${reviewPeriod}</strong><small>days taken</small></div><div class="card metric-card"><span>Vitamins</span><strong>${s.vitaminDays}/${reviewPeriod}</strong><small>Multivitamin and vitamin D</small></div>
+        <div class="card metric-card primary-metric"><span>Gennemsnitlig morgenvægt</span><strong>${s.averageWeightKg == null ? '—' : `${formatWeight(s.averageWeightKg)} kg`}</strong><small>${s.weightEntries} vejning${s.weightEntries === 1 ? '' : 'er'}${s.weightChangeKg == null ? '' : ` · ${signedWeight(s.weightChangeKg)} kg i forhold til ${comparison}`}</small></div>
+        <div class="card metric-card"><span>Registreret protein i gennemsnit</span><strong>${s.loggedNutritionDays ? `${roundMacro(s.averageProteinG)} g` : '—'}</strong><small>Registrerede dage: ${s.loggedNutritionDays}</small></div>
+        <div class="card metric-card"><span>Registrerede kalorier i gennemsnit</span><strong>${s.loggedNutritionDays ? Math.round(s.averageCalories).toLocaleString('da-DK') : '—'}</strong><small>${s.loggedNutritionDays ? 'kcal pr. registreret dag' : 'Ingen måltider registreret'}</small></div>
+        <div class="card metric-card"><span>Træningspas</span><strong>${s.strengthWorkouts + s.runs + s.longBikeRides}</strong><small>${s.strengthWorkouts} styrke · ${s.runs} løb · ${s.longBikeRides} cykling</small></div>
+        <div class="card metric-card"><span>Kreatin</span><strong>${s.creatineDays}/${reviewPeriod}</strong><small>dage taget</small></div><div class="card metric-card"><span>Vitaminer</span><strong>${s.vitaminDays}/${reviewPeriod}</strong><small>Multivitamin og D-vitamin</small></div>
       </div>
-      <div class="card trend-card"><div class="trend-head"><strong>Protein consistency</strong><small>Recorded protein · ${s.loggedNutritionDays} logged days · dashed line: current target ${roundMacro(state.settings.proteinTarget || 160)} g</small></div>${trendChart(report.days, 'protein')}<div id="trend-meals" aria-live="polite"></div></div>
-      <div class="card trend-card"><div class="trend-head"><strong>Weight trend</strong><small>Morning weigh-ins · solid line: 7-day average</small></div><button class="secondary-button trend-range" id="weight-range" aria-pressed="${longWeightView}">${longWeightView ? '90 days · return to selected period' : 'View 90 days'}</button>${trendChart(longWeightView ? weightWindow(report.weekEnd) : report.days, 'weight')}</div>
+      <div class="card trend-card"><div class="trend-head"><strong>Protein over tid</strong><small>Registreret protein · ${s.loggedNutritionDays} registrerede dage · stiplet linje: nuværende mål ${roundMacro(state.settings.proteinTarget || 160)} g</small></div>${trendChart(report.days, 'protein')}<div id="trend-meals" aria-live="polite"></div></div>
+      <div class="card trend-card"><div class="trend-head"><strong>Vægtudvikling</strong><small>Morgenvejninger · fuldt optrukket linje: 7-dages gennemsnit</small></div><button class="secondary-button trend-range" id="weight-range" aria-pressed="${longWeightView}">${longWeightView ? '90 dage · tilbage til valgt periode' : 'Vis 90 dage'}</button>${trendChart(longWeightView ? weightWindow(report.weekEnd) : report.days, 'weight')}</div>
       ${proteinSources(start, reviewPeriod)}
-      <div class="section-kicker">Daily overview</div>
-      <div class="card daily-review">${report.days.map(d => `<div class="daily-review-row"><div><strong>${escapeHtml(formatShortDay(d.date))}</strong><small>${d.weightKg == null ? 'No weigh-in' : `${formatWeight(d.weightKg)} kg`}</small></div><div class="daily-review-macros"><strong>${d.hasNutrition ? `${roundMacro(d.proteinG)} g protein` : 'No meals logged'}</strong><small>${d.hasNutrition ? `${Math.round(d.calories)} kcal recorded` : '—'}</small></div></div>`).join('')}</div>
-      <div class="section-kicker">Export ${reviewPeriod === 7 ? 'this week' : 'these 30 days'}</div>
-      <div class="card settings-group"><strong>${escapeHtml(reportExportStatus(report))}</strong><div class="settings-help">${state.reportExports?.[reportKey(report)] ? `Last export: ${escapeHtml(new Date(state.reportExports[reportKey(report)].at).toLocaleString())} · ${escapeHtml(state.reportExports[reportKey(report)].format.toUpperCase())}. ` : ''}Status tracks exports from this update onward. Sharing/downloading starts the export; check that you saved the file. A weekly report is not a full backup.</div></div>
-      <div class="card export-card"><div><strong>Full nutrition + weight report</strong><small>Includes daily data, activities, creatine, meals and ingredient-level detail.</small></div><div class="export-actions"><button class="primary-button" id="export-csv">Export CSV</button><button class="secondary-button" id="export-json">Export JSON</button></div></div>
+      <div class="section-kicker">Daglig oversigt</div>
+      <div class="card daily-review">${report.days.map(d => `<div class="daily-review-row"><div><strong>${escapeHtml(formatShortDay(d.date))}</strong><small>${d.weightKg == null ? 'Ingen vejning' : `${formatWeight(d.weightKg)} kg`}</small></div><div class="daily-review-macros"><strong>${d.hasNutrition ? `${roundMacro(d.proteinG)} g protein` : 'Ingen måltider registreret'}</strong><small>${d.hasNutrition ? `${Math.round(d.calories)} kcal registreret` : '—'}</small></div></div>`).join('')}</div>
+      <div class="section-kicker">Eksportér ${reviewPeriod === 7 ? 'denne uge' : 'disse 30 dage'}</div>
+      <div class="card settings-group"><strong>${escapeHtml(reportExportStatus(report))}</strong><div class="settings-help">${state.reportExports?.[reportKey(report)] ? `Seneste eksport: ${escapeHtml(new Date(state.reportExports[reportKey(report)].at).toLocaleString('da-DK'))} · ${escapeHtml(state.reportExports[reportKey(report)].format.toUpperCase())}. ` : ''}Eksporten starter, når du deler eller henter filen. Kontrollér, at den blev gemt. En ugerapport er ikke en fuld sikkerhedskopi.</div></div>
+      <div class="card export-card"><div><strong>Kost- og vægtrapport</strong><small>Med dagstal, aktiviteter, kreatin, måltider og ingredienser.</small></div><div class="export-actions"><button class="primary-button" id="export-csv">Eksportér CSV</button><button class="secondary-button" id="export-json">Eksportér JSON</button></div></div>
     </section>`;
     document.getElementById('review-7').onclick = () => { reviewPeriod = 7; renderWeekly(); };
     document.getElementById('review-30').onclick = () => { reviewPeriod = 30; renderWeekly(); };
@@ -369,7 +369,7 @@
     document.querySelectorAll('[data-protein-day]').forEach(link => link.onclick = event => {
       event.preventDefault();
       const d = report.days.find(day => day.date === link.dataset.proteinDay);
-      document.getElementById('trend-meals').innerHTML = '<strong>' + escapeHtml(formatShortDay(d.date)) + ' · ' + roundMacro(d.proteinG) + ' g recorded</strong>' + d.meals.map(m => '<div class="source-meal"><span>' + escapeHtml(m.name) + '</span><b>' + roundMacro(m.proteinG) + ' g</b></div>').join('');
+      document.getElementById('trend-meals').innerHTML = '<strong>' + escapeHtml(formatShortDay(d.date)) + ' · ' + roundMacro(d.proteinG) + ' g registreret</strong>' + d.meals.map(m => '<div class="source-meal"><span>' + escapeHtml(m.name) + '</span><b>' + roundMacro(m.proteinG) + ' g</b></div>').join('');
     });
     document.getElementById('export-json').onclick = () => exportWeeklyReport(report, 'json');
     const jump = document.getElementById('export-week-select');
@@ -386,7 +386,7 @@
   }
   function reportExportStatus(report) {
     const record = state.reportExports?.[reportKey(report)];
-    return !record ? 'Not exported' : record.signature === reportSignature(report) ? 'Exported' : 'Changed since export — export again';
+    return !record ? 'Ikke eksporteret' : record.signature === reportSignature(report) ? 'Eksporteret' : 'Ændret siden eksport · eksportér igen';
   }
   function exportWeekOptions() {
     const weeks = new Set([selectedWeekStart, weekStartKey(localDateKey(new Date()))]);
@@ -401,7 +401,7 @@
       const totals = dayTotals(source);
       const activities = source.activities || {};
       const entries = Array.isArray(source.entries) ? source.entries : [];
-      return { date, weightKg: hasWeight(source) ? Number(source.weightKg) : null, hasNutrition: entries.length > 0, calories: totals.calories, proteinG: totals.protein, creatine: Boolean(source.creatine), vitamins: Boolean(source.vitamins), strengthWorkout: Boolean(activities.strength), run: Boolean(activities.run), longBikeRide: Boolean(activities.longBike), meals: entries.map(entry => ({ id: entry.id, section: MEAL_LABELS[entry.category] || entry.category || '', name: entry.name || entry.description || 'Meal', description: entry.description || '', calories: num(entry.calories), proteinG: num(entry.protein), manualWeightG: entry.manualWeightG != null ? num(entry.manualWeightG) : null, ingredients: activeIngredients(entry.ingredients) })) };
+      return { date, weightKg: hasWeight(source) ? Number(source.weightKg) : null, hasNutrition: entries.length > 0, calories: totals.calories, proteinG: totals.protein, creatine: Boolean(source.creatine), vitamins: Boolean(source.vitamins), strengthWorkout: Boolean(activities.strength), run: Boolean(activities.run), longBikeRide: Boolean(activities.longBike), meals: entries.map(entry => ({ id: entry.id, section: ({breakfast:'Breakfast',lunch:'Lunch',dinner:'Dinner',snacks:'Snacks'})[entry.category] || entry.category || '', name: entry.name || entry.description || 'Meal', description: entry.description || '', calories: num(entry.calories), proteinG: num(entry.protein), manualWeightG: entry.manualWeightG != null ? num(entry.manualWeightG) : null, ingredients: activeIngredients(entry.ingredients) })) };
     });
     const weights = days.map(d => d.weightKg).filter(v => v != null);
     const previousWeights = Array.from({ length: period }, (_, i) => shiftDate(startDate, -period + i)).map(date => state.days[date]).filter(hasWeight).map(day => Number(day.weightKg));
@@ -433,8 +433,8 @@
   }
 
   function renderWeightAverage(trend, period = 7) {
-    if (trend.averageKg == null) return `Log morning weight to see a ${period}-day average`;
-    return `<strong>${formatWeight(trend.averageKg)} kg</strong> average weight · ${trend.count} weigh-in${trend.count === 1 ? '' : 's'}${trend.changeKg == null ? '' : `<br>${signedWeight(trend.changeKg)} kg vs previous ${period} days`}`;
+    if (trend.averageKg == null) return `Registrér morgenvægt for at se gennemsnittet over ${period} dage`;
+    return `<strong>${formatWeight(trend.averageKg)} kg</strong> i gennemsnit · ${trend.count} vejning${trend.count === 1 ? '' : 'er'}${trend.changeKg == null ? '' : `<br>${signedWeight(trend.changeKg)} kg i forhold til de foregående ${period} dage`}`;
   }
 
   function weightWindow(end) {
@@ -452,7 +452,7 @@
     };
     const history = Array.from({length: 6}, (_, i) => raw(shiftDate(days[0].date, i - 6))).concat(days.map(d => raw(d.date)));
     const values = history.slice(6);
-    if (!values.some(v => v != null)) return '<div class="trend-empty">' + (protein ? 'No meals logged' : 'No morning weigh-ins') + ' in this period.</div>';
+    if (!values.some(v => v != null)) return '<div class="trend-empty">' + (protein ? 'Ingen måltider registreret' : 'Ingen morgenvejninger') + ' i denne periode.</div>';
     const averages = days.map((d,i) => d.date > today ? null : averageNumbers(history.slice(i, i+7).filter(v => v != null)));
     const known = [...values,...averages].filter(v => v != null);
     const low = protein ? 0 : Math.floor(Math.min(...known)*2)/2 - 0.25;
@@ -466,11 +466,11 @@
       : '<circle cx="'+x(i)+'" cy="'+y(v)+'" r="2.7" class="weigh-in"/>').join('');
     const scale = protein ? [0,target] : [Math.min(...values.filter(v=>v!=null)),Math.max(...values.filter(v=>v!=null))];
     const labels=[...new Set(scale)].map(v=>'<text x="1" y="'+(y(v)+3)+'">'+(protein?roundMacro(v):formatWeight(v))+'</text>').join('');
-    const hits = protein ? days.map((d,i)=>values[i]==null?'':'<a href="#trend-meals" data-protein-day="'+d.date+'" aria-label="'+escapeAttr(formatShortDay(d.date)+': '+roundMacro(values[i])+' g protein. Show meals')+'"><rect x="'+(x(i)-step/2)+'" y="0" width="'+step+'" height="106" fill="transparent"/></a>').join('') : '';
+    const hits = protein ? days.map((d,i)=>values[i]==null?'':'<a href="#trend-meals" data-protein-day="'+d.date+'" aria-label="'+escapeAttr(formatShortDay(d.date)+': '+roundMacro(values[i])+' g protein. Vis måltider')+'"><rect x="'+(x(i)-step/2)+'" y="0" width="'+step+'" height="106" fill="transparent"/></a>').join('') : '';
     const ticks=days.map((d,i)=> (count<=7 || i===0 || i===count-1 || (protein && i%5===0 && i<count-3)) ? '<text x="'+x(i)+'" y="119" text-anchor="middle">'+(count<=7?formatWeekdayLetter(d.date):parseLocalDate(d.date).getDate())+'</text>' : '').join('');
-    return '<div class="trend-scroll"><svg class="intake-plot" style="min-width:'+(protein && count>7 ? width : 0)+'px" viewBox="0 0 '+width+' 124" role="'+(protein?'group':'img')+'" aria-label="'+(protein?'Daily protein and seven-day average':'Morning weights in kg and seven-day average')+'">'+labels+
+    return '<div class="trend-scroll"><svg class="intake-plot" style="min-width:'+(protein && count>7 ? width : 0)+'px" viewBox="0 0 '+width+' 124" role="'+(protein?'group':'img')+'" aria-label="'+(protein?'Dagligt protein og syvdagesgennemsnit':'Morgenvægt i kg og syvdagesgennemsnit')+'">'+labels+
       (protein?'<path class="target-rule" d="M'+left+' '+y(target)+'h'+span+'"/>':'')+marks+'<path class="rolling-line" d="'+line+'"/>'+averages.map((v,i)=>v!=null && averages[i-1]==null && averages[i+1]==null ? '<circle class="rolling-point" cx="'+x(i)+'" cy="'+y(v)+'" r="2.4"/>':'').join('')+ticks+hits+'</svg></div><small class="chart-note">'+
-      escapeHtml(formatShortDay(days[0].date)+' – '+formatShortDay(days[count-1].date))+(protein?' · Line: 7-day average. Tap a bar for meals.':' · '+values.filter(v=>v!=null).length+' weigh-ins')+'</small>';
+      escapeHtml(formatShortDay(days[0].date)+' – '+formatShortDay(days[count-1].date))+(protein?' · Linje: 7-dages gennemsnit. Tryk på en søjle for at se måltider.':' · '+values.filter(v=>v!=null).length+' vejninger')+'</small>';
   }
 
   function proteinSources(start, period) {
@@ -482,17 +482,17 @@
           const row=sections[meal.category]; if(!row) continue;
           const grams=num(meal.protein); row.total+=grams; seen.add(meal.category);
           if(breakdown){const key=meal.recipeKey || mealFingerprint(meal), old=row.meals.get(key);
-            row.meals.set(key,{name:meal.name || meal.description || 'Meal',grams:(old?.grams||0)+grams,count:(old?.count||0)+1});}
+            row.meals.set(key,{name:meal.name || meal.description || 'Måltid',grams:(old?.grams||0)+grams,count:(old?.count||0)+1});}
         }
         seen.forEach(k=>sections[k].days++);
       }
       return sections;
     };
     const now=collect(start,true), prev=collect(shiftDate(start,-period),false), total=MEAL_TYPES.reduce((s,k)=>s+now[k].total,0);
-    return '<div class="card trend-card"><div class="trend-head"><strong>Where did my protein come from?</strong><small>Share of recorded protein · tap a section for meals</small></div>'+MEAL_TYPES.map(k=>{
+    return '<div class="card trend-card"><div class="trend-head"><strong>Hvor kom mit protein fra?</strong><small>Andel af registreret protein · tryk på en kategori for at se måltider</small></div>'+MEAL_TYPES.map(k=>{
       const r=now[k],p=prev[k], share=total?100*r.total/total:0, avg=r.days?r.total/r.days:null, change=p.days && avg!=null ? avg-p.total/p.days:null;
-      const detail=r.days ? roundMacro(avg)+' g per logged '+(k==='snacks'?'snack day':k)+' · '+r.days+' logged day'+(r.days===1?'':'s') : 'No meals logged';
-      return '<details class="source-section"><summary><span>'+MEAL_LABELS[k]+'</span><b>'+Math.round(share)+'%</b><progress max="100" value="'+share+'"></progress></summary><small>'+detail+(change==null?'':' · '+(change>0?'+':'')+roundMacro(change)+' g vs previous '+period+' days')+'</small>'+[...r.meals.values()].sort((a,b)=>b.grams-a.grams).map(m=>'<div class="source-meal"><span>'+escapeHtml(m.name)+' <small>×'+m.count+'</small></span><b>'+roundMacro(m.grams)+' g</b></div>').join('')+'</details>';
+      const detail=r.days ? roundMacro(avg)+' g pr. dag med '+MEAL_LABELS[k].toLowerCase()+' · '+r.days+' '+(r.days===1?'registreret dag':'registrerede dage') : 'Ingen måltider registreret';
+      return '<details class="source-section"><summary><span>'+MEAL_LABELS[k]+'</span><b>'+Math.round(share)+'%</b><progress max="100" value="'+share+'"></progress></summary><small>'+detail+(change==null?'':' · '+(change>0?'+':'')+roundMacro(change)+' g i forhold til de foregående '+period+' dage')+'</small>'+[...r.meals.values()].sort((a,b)=>b.grams-a.grams).map(m=>'<div class="source-meal"><span>'+escapeHtml(m.name)+' <small>×'+m.count+'</small></span><b>'+roundMacro(m.grams)+' g</b></div>').join('')+'</details>';
     }).join('')+'</div>';
   }
 
@@ -506,8 +506,8 @@
       state.reportExports = { ...(state.reportExports || {}), [reportKey(report)]: { at: new Date().toISOString(), format, signature: reportSignature(report) } };
       saveState();
       if (activeTab === 'review') renderWeekly();
-      toast('Export started — check the file is saved');
-    } catch { state.reportExports = previousExports; window.alert('Export did not finish, or its status could not be saved. Check your downloaded files and try again.'); }
+      toast('Eksporten er startet · kontrollér, at filen blev gemt');
+    } catch { state.reportExports = previousExports; window.alert('Eksporten eller lagringen af status mislykkedes. Tjek dine hentede filer, og prøv igen.'); }
   }
 
   function weeklyCsv(report) {
@@ -533,7 +533,7 @@
   async function shareOrDownload(content, mimeType, filename) {
     const file = typeof File !== 'undefined' ? new File([content], filename, { type: mimeType }) : null;
     if (file && navigator.share && navigator.canShare?.({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: 'Protein Log export' }); return true; }
+      try { await navigator.share({ files: [file], title: 'Eksport fra Protein Log' }); return true; }
       catch (err) { if (err?.name === 'AbortError') return false; throw err; }
     }
     const url = URL.createObjectURL(new Blob([content], { type: mimeType }));
@@ -543,7 +543,7 @@
 
   function mealBadge(meal) {
     const quality = meal.quality || (meal.source === 'manual' ? 'manual' : '');
-    return quality ? `<small class="meal-quality">${quality === 'manual' ? 'Manual' : 'Edited'}</small>` : '';
+    return quality ? `<small class="meal-quality">${quality === 'manual' ? 'Manuel' : 'Rettet'}</small>` : '';
   }
   function ingredientEditFingerprint(ingredients) {
     // Compare the editable nutrition/identity fields, never portion sizes.
@@ -584,13 +584,13 @@
       .sort((a, b) => b.count - a.count || b.date.localeCompare(a.date) || String(a.meal.name || '').localeCompare(String(b.meal.name || '')));
   }
   function libraryResultsHtml(items, grouped = true, expanded = false, offset = 0) {
-    if (!items.length) return '<div class="empty-card">No matching meals yet.</div>';
-    const card = (item, index) => `<button class="card library-meal" data-library-index="${index + offset}"><span class="library-title"><strong>${escapeHtml(item.meal.name || item.meal.description || 'Meal')}</strong>${mealBadge(item.meal)}</span><span class="library-ingredients">${escapeHtml((item.meal.ingredients || []).map(i => `${roundInput(i.amount)} g ${i.name}`).join(' · ') || item.meal.description || '')}</span><span class="library-macros">${roundMacro(item.meal.protein)} g protein · ${Math.round(num(item.meal.calories))} kcal</span><small>${item.date ? `Used ${item.count} time${item.count === 1 ? '' : 's'} · Last logged ${escapeHtml(formatLongDate(item.date))}` : 'Previously saved meal'}</small></button>`;
+    if (!items.length) return '<div class="empty-card">Ingen måltider matcher din søgning.</div>';
+    const card = (item, index) => `<button class="card library-meal" data-library-index="${index + offset}"><span class="library-title"><strong>${escapeHtml(item.meal.name || item.meal.description || 'Måltid')}</strong>${mealBadge(item.meal)}</span><span class="library-ingredients">${escapeHtml((item.meal.ingredients || []).map(i => `${formatInput(i.amount)} g ${i.name}`).join(' · ') || item.meal.description || '')}</span><span class="library-macros">${roundMacro(item.meal.protein)} g protein · ${Math.round(num(item.meal.calories))} kcal</span><small>${item.date ? `Brugt ${item.count} gang${item.count === 1 ? '' : 'e'} · Senest registreret ${escapeHtml(formatLongDate(item.date))}` : 'Tidligere gemt måltid'}</small></button>`;
     if (!grouped) return items.map(card).join('');
     return MEAL_TYPES.map(category => {
       const cards = items.map((item, index) => item.meal.category === category ? card(item, index) : '').join('');
       const count = items.filter(item => item.meal.category === category).length;
-      return cards ? `<details class="library-section"${expanded ? ' open' : ''}><summary><span>${MEAL_LABELS[category]}</span><small>${count} meal${count === 1 ? '' : 's'}</small><span class="library-chevron" aria-hidden="true">⌄</span></summary>${cards}</details>` : '';
+      return cards ? `<details class="library-section"${expanded ? ' open' : ''}><summary><span>${MEAL_LABELS[category]}</span><small>${count} måltider</small><span class="library-chevron" aria-hidden="true">⌄</span></summary>${cards}</details>` : '';
     }).join('');
   }
   function bindLibraryResults(query, container, choose) {
@@ -599,7 +599,7 @@
     container.querySelectorAll('[data-library-index]').forEach(button => button.onclick = () => choose(clone(items[Number(button.dataset.libraryIndex)].meal)));
   }
   function renderSaved() {
-    app.innerHTML = '<div class="page-head"><h1>Meals</h1></div><div class="settings-help">Most-used meals first in each section. Choose one and adjust quantities.</div><div class="field"><input id="library-search" type="search" aria-label="Search meals" placeholder="Search meals or ingredients" /></div><div id="library-results"></div>';
+    app.innerHTML = '<div class="page-head"><h1>Måltider</h1></div><div class="settings-help">De mest brugte måltider står øverst i hver kategori. Vælg et måltid for at ændre mængderne.</div><div class="field"><input id="library-search" type="search" aria-label="Søg efter måltider" placeholder="Søg efter måltider eller ingredienser" /></div><div id="library-results"></div>';
     const input = document.getElementById('library-search'), results = document.getElementById('library-results');
     const update = () => bindLibraryResults(input.value, results, meal => openMealLibrary(null, meal));
     input.oninput = update; update();
@@ -614,22 +614,22 @@
   }
   function openMealLibrary(category = null, selectedMeal = null) {
     lockPage();
-    modalRoot.innerHTML = `<div class="modal-backdrop"><div class="sheet"><div class="sheet-handle"></div><div class="sheet-head"><h2>Find a meal</h2><button class="close-button" id="close-library" aria-label="Close meal search">×</button></div>${category ? '' : `<div class="field"><label for="library-category">Add to</label><select id="library-category">${mealOptions(selectedMeal?.category || 'breakfast')}</select></div>`}<div class="field"><input id="meal-search" type="search" aria-label="Search previous meals" placeholder="Search meals or ingredients" /></div><div id="meal-search-results"></div></div></div>`;
+    modalRoot.innerHTML = `<div class="modal-backdrop"><div class="sheet"><div class="sheet-handle"></div><div class="sheet-head"><h2>Find et måltid</h2><button class="close-button" id="close-library" aria-label="Luk måltidssøgning">×</button></div>${category ? '' : `<div class="field"><label for="library-category">Tilføj til</label><select id="library-category">${mealOptions(selectedMeal?.category || 'breakfast')}</select></div>`}<div class="field"><input id="meal-search" type="search" aria-label="Søg i tidligere måltider" placeholder="Søg efter måltider eller ingredienser" /></div><div id="meal-search-results"></div></div></div>`;
     document.getElementById('close-library').onclick = closeModal;
     const input = document.getElementById('meal-search'), results = document.getElementById('meal-search-results');
     const choose = meal => openFoodModal(category || document.getElementById('library-category').value, null, meal);
     if (selectedMeal) {
       results.innerHTML = libraryResultsHtml([{ meal: selectedMeal, date: '', count: 0 }], false);
-      results.insertAdjacentHTML('beforeend', '<button class="secondary-button" id="rename-meal">Rename meal</button>');
+      results.insertAdjacentHTML('beforeend', '<button class="secondary-button" id="rename-meal">Omdøb måltid</button>');
       document.getElementById('rename-meal').onclick = () => {
-        results.innerHTML = '<form id="rename-form"><div class="field"><label for="recipe-title">Meal name</label><input required id="recipe-title" value="' + escapeAttr(selectedMeal.name || selectedMeal.description || '') + '"></div><button class="primary-button">Save name</button></form>';
+        results.innerHTML = '<form id="rename-form"><div class="field"><label for="recipe-title">Måltidets navn</label><input required id="recipe-title" value="' + escapeAttr(selectedMeal.name || selectedMeal.description || '') + '"></div><button class="primary-button">Gem navn</button></form>';
         const title = document.getElementById('recipe-title');
         title.focus(); title.select();
         document.getElementById('rename-form').onsubmit = event => {
           event.preventDefault();
-          if (!title.value.trim()) return toast('Enter a meal name');
+          if (!title.value.trim()) return toast('Indtast et måltidsnavn');
           renameRecipe(selectedMeal, title.value.trim());
-          saveState(); closeModal(); renderSaved(); toast('Meal renamed');
+          saveState(); closeModal(); renderSaved(); toast('Måltidet er omdøbt');
         };
       };
       results.querySelectorAll('[data-library-index]').forEach(button => button.onclick = () => choose(selectedMeal));
@@ -638,13 +638,13 @@
   }
 
   function renderSettings() {
-    app.innerHTML = `<h1>Settings</h1><div class="section-kicker">Appearance</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="theme-select">Theme</label><select id="theme-select"><option value="system" ${(state.settings.theme || 'system') === 'system' ? 'selected' : ''}>System default</option><option value="light" ${state.settings.theme === 'light' ? 'selected' : ''}>Light</option><option value="dark" ${state.settings.theme === 'dark' ? 'selected' : ''}>Dark</option></select></div></div><div class="section-kicker">Targets</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="protein-target">Daily protein target</label><input id="protein-target" type="number" inputmode="decimal" min="1" step="1" value="${Number(state.settings.proteinTarget) || 160}" /></div><div class="settings-row"><label class="settings-label" for="calorie-target">Daily calorie guide</label><input id="calorie-target" type="number" inputmode="numeric" min="1" step="50" value="${Number(state.settings.calorieTarget) || 2500}" /><div class="settings-help">Calories are shown as a neutral guide. Protein remains the primary target.</div></div></div><div class="section-kicker">Claude</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="claude-api-key">Claude API key</label><input id="claude-api-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…" value="${escapeAttr(state.settings.claudeApiKey || '')}" /><div class="settings-help">Stored only in this browser. AI analysis is optional; meals can always be entered manually.</div></div></div><div class="card settings-group"><div class="settings-row"><strong>Storage</strong><div class="settings-help">Meals, targets, creatine checks, activities, weight, appearance and your Claude key stay in Safari on this iPhone.</div></div></div>`;
-    app.innerHTML = app.innerHTML.replace('<h1>Settings</h1>', '<h1>Settings</h1>' + backupSettingsHtml());
+    app.innerHTML = `<h1>Indstillinger</h1><div class="section-kicker">Udseende</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="theme-select">Tema</label><select id="theme-select"><option value="system" ${(state.settings.theme || 'system') === 'system' ? 'selected' : ''}>Følg systemet</option><option value="light" ${state.settings.theme === 'light' ? 'selected' : ''}>Lyst</option><option value="dark" ${state.settings.theme === 'dark' ? 'selected' : ''}>Mørkt</option></select></div></div><div class="section-kicker">Mål</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="protein-target">Dagligt proteinmål</label><input id="protein-target" type="number" inputmode="decimal" min="1" step="1" value="${Number(state.settings.proteinTarget) || 160}" /></div><div class="settings-row"><label class="settings-label" for="calorie-target">Dagligt kaloriepejlemærke</label><input id="calorie-target" type="number" inputmode="numeric" min="1" step="50" value="${Number(state.settings.calorieTarget) || 2500}" /><div class="settings-help">Kalorier vises som et pejlemærke. Protein er det primære mål.</div></div></div><div class="section-kicker">Claude</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="claude-api-key">API-nøgle til Claude</label><input id="claude-api-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…" value="${escapeAttr(state.settings.claudeApiKey || '')}" /><div class="settings-help">Nøglen gemmes kun i denne browser. Du kan altid registrere måltider uden AI.</div></div></div><div class="card settings-group"><div class="settings-row"><strong>Lagring</strong><div class="settings-help">Dine måltider, mål, tilskud, aktiviteter, vægt, indstillinger og Claude-nøgle gemmes i denne browser.</div></div></div>`;
+    app.innerHTML = app.innerHTML.replace('<h1>Indstillinger</h1>', '<h1>Indstillinger</h1>' + backupSettingsHtml());
     bindBackupSettings();
-    document.getElementById('theme-select').onchange = e => { state.settings.theme = e.target.value; applyTheme(); saveState(); toast('Theme saved'); };
-    bindSetting('protein-target', 'proteinTarget', 160, 'Protein target saved');
-    bindSetting('calorie-target', 'calorieTarget', 2500, 'Calorie goal saved');
-    document.getElementById('claude-api-key').onchange = e => { state.settings.claudeApiKey = e.target.value.trim(); saveState(); toast('Claude API key saved locally'); };
+    document.getElementById('theme-select').onchange = e => { state.settings.theme = e.target.value; applyTheme(); saveState(); toast('Temaet er gemt'); };
+    bindSetting('protein-target', 'proteinTarget', 160, 'Proteinmålet er gemt');
+    bindSetting('calorie-target', 'calorieTarget', 2500, 'Kaloriepejlemærket er gemt');
+    document.getElementById('claude-api-key').onchange = e => { state.settings.claudeApiKey = e.target.value.trim(); saveState(); toast('Claude-nøglen er gemt lokalt'); };
   }
   function bindSetting(id, key, fallback, message) { document.getElementById(id).onchange = e => { state.settings[key] = Math.max(1, Number(e.target.value) || fallback); saveState(); toast(message); }; }
 
@@ -660,7 +660,7 @@
     let portionOrigins = startingIngredients.map((_, i) => i);
     const markIngredientEdit = () => { if (ingredientEditFingerprint(draft.ingredients) !== ingredientBaseline && quality !== 'manual') quality = 'edited'; };
     let entryMode = originalMeal ? 'ingredients' : 'choice';
-    modalRoot.innerHTML = `<div class="modal-backdrop"><div class="sheet meal-sheet"><div class="brand-label">Protein Log</div><div class="sheet-head"><h2>${existing ? MEAL_LABELS[category] : `Add ${MEAL_LABELS[category]}`}</h2><button class="close-button" aria-label="Close meal editor" id="close-sheet">×</button></div><div id="food-editor"></div></div></div>`;
+    modalRoot.innerHTML = `<div class="modal-backdrop"><div class="sheet meal-sheet"><div class="brand-label">Protein Log</div><div class="sheet-head"><h2>${existing ? MEAL_LABELS[category] : `Tilføj: ${MEAL_LABELS[category]}`}</h2><button class="close-button" aria-label="Luk måltidet" id="close-sheet">×</button></div><div id="food-editor"></div></div></div>`;
     document.getElementById('close-sheet').onclick = closeModal;
     renderFoodEditor();
 
@@ -668,9 +668,9 @@
       const root = document.getElementById('food-editor');
       const showNutrition = entryMode !== 'choice';
       modalRoot._ingredients = draft.ingredients;
-      const ingredientEditor = showNutrition ? `<div class="ingredient-editor"><div class="ingredient-editor-head"><strong>Ingredients</strong><button class="secondary-button add-ingredient" id="add-food-ingredient">+ Add ingredient</button></div><div class="ingredient-head"><span>Ingredient</span><span>Amount</span></div><div class="ingredient-list">${draft.ingredients.map((ing, i) => ingredientRowHtml(ing, i)).join('')}</div><div class="settings-help">Enter each ingredient separately. Totals update automatically.</div></div><div class="calculated-total" id="calculated-meal-total">Meal total: <strong>${roundMacro(draft.protein)} g protein · ${Math.round(draft.calories)} kcal</strong></div>` : '';
-      const saveControls = showNutrition ? `${existing ? '<div class="copy-entry-action"><button class="secondary-button" id="copy-entry">Copy meal</button><small>Copy these values to paste on another day</small></div>' : ''}<div class="modal-actions">${existing ? '<button class="secondary-button danger" id="delete-entry">Delete</button>' : '<button class="secondary-button" id="cancel-entry">Cancel</button>'}<button class="primary-button" id="save-entry">${existing ? 'Save meal' : 'Add meal'}</button></div>` : '<div class="modal-actions single"><button class="secondary-button" id="cancel-entry">Cancel</button></div>';
-      root.innerHTML = `${!existing ? '<button class="secondary-button search-meal-button" id="search-previous-meals">Find a previous meal</button>' : ''}<div class="field"><label for="meal-name">Meal name</label><input id="meal-name" placeholder="e.g. Skyr with muesli" value="${escapeAttr(draft.name || '')}" /></div>${showNutrition ? '<button type="button" class="manual-entry-button" id="toggle-analysis" aria-expanded="false" aria-controls="analysis-fields">Meal description &amp; AI analysis</button><div id="analysis-fields" hidden>' : ''}<div class="field"><label for="food-text">Description for Claude (optional for manual entry)</label><textarea id="food-text" placeholder="e.g. skyr with muesli">${escapeHtml(draft.description || draft.name || '')}</textarea></div><div class="analysis-action"><button class="primary-button" id="analyze-food">Analyze with Claude</button>${entryMode === 'choice' ? '<button class="manual-entry-button" id="manual-food">Enter manually</button>' : '<small>Run again if the description changes</small>'}</div>${showNutrition ? '</div>' : ''}<div id="food-error"></div>${ingredientEditor}${saveControls}`;
+      const ingredientEditor = showNutrition ? `<div class="ingredient-editor"><div class="ingredient-editor-head"><strong>Ingredienser</strong><button class="secondary-button add-ingredient" id="add-food-ingredient">+ Tilføj ingrediens</button></div><div class="ingredient-head"><span>Ingrediens</span><span>Mængde</span></div><div class="ingredient-list">${draft.ingredients.map((ing, i) => ingredientRowHtml(ing, i)).join('')}</div><div class="settings-help">Indtast ingredienserne hver for sig. Måltidets tal opdateres automatisk.</div></div><div class="calculated-total" id="calculated-meal-total">Måltid i alt: <strong>${roundMacro(draft.protein)} g protein · ${Math.round(draft.calories)} kcal</strong></div>` : '';
+      const saveControls = showNutrition ? `${existing ? '<div class="copy-entry-action"><button class="secondary-button" id="copy-entry">Kopiér måltid</button><small>Indsæt en kopi på en anden dag</small></div>' : ''}<div class="modal-actions">${existing ? '<button class="secondary-button danger" id="delete-entry">Slet</button>' : '<button class="secondary-button" id="cancel-entry">Annuller</button>'}<button class="primary-button" id="save-entry">${existing ? 'Gem måltid' : 'Tilføj måltid'}</button></div>` : '<div class="modal-actions single"><button class="secondary-button" id="cancel-entry">Annuller</button></div>';
+      root.innerHTML = `${!existing ? '<button class="secondary-button search-meal-button" id="search-previous-meals">Find et tidligere måltid</button>' : ''}<div class="field"><label for="meal-name">Måltidets navn</label><input id="meal-name" placeholder="Fx skyr med müsli" value="${escapeAttr(draft.name || '')}" /></div>${showNutrition ? '<button type="button" class="manual-entry-button" id="toggle-analysis" aria-expanded="false" aria-controls="analysis-fields">Beskrivelse og AI-analyse</button><div id="analysis-fields" hidden>' : ''}<div class="field"><label for="food-text">Beskrivelse til Claude (valgfri)</label><textarea id="food-text" placeholder="Fx skyr med müsli">${escapeHtml(draft.description || draft.name || '')}</textarea></div><div class="analysis-action"><button class="primary-button" id="analyze-food">Analysér med Claude</button>${entryMode === 'choice' ? '<button class="manual-entry-button" id="manual-food">Indtast selv</button>' : '<small>Analysér igen, hvis du ændrer beskrivelsen</small>'}</div>${showNutrition ? '</div>' : ''}<div id="food-error"></div>${ingredientEditor}${saveControls}`;
       if (entryMode === 'choice') {
         const logged = mealLibrary('', category).filter(item => item.count > 0);
         const popular = logged.slice(0, 3);
@@ -678,7 +678,7 @@
         const suggestions = [...popular, ...recent];
         if (suggestions.length) {
           const section = MEAL_LABELS[category].toLowerCase();
-          root.insertAdjacentHTML('beforeend', `<div class="meal-suggestions"><h3 class="section-kicker">Recently used for ${section}</h3>${libraryResultsHtml(recent, false, false, popular.length)}<h3 class="section-kicker">Most used for ${section}</h3>${libraryResultsHtml(popular, false)}</div>`);
+          root.insertAdjacentHTML('beforeend', `<div class="meal-suggestions"><h3 class="section-kicker">Senest brugt til ${section}</h3>${libraryResultsHtml(recent, false, false, popular.length)}<h3 class="section-kicker">Mest brugt til ${section}</h3>${libraryResultsHtml(popular, false)}</div>`);
           root.querySelectorAll('[data-library-index]').forEach(button => button.onclick = () => openFoodModal(category, null, clone(suggestions[Number(button.dataset.libraryIndex)].meal)));
         }
       }
@@ -687,7 +687,7 @@
       const searchPrevious = document.getElementById('search-previous-meals');
       if (showNutrition) {
         const name = document.getElementById('meal-name');
-        name.insertAdjacentHTML?.('afterend', '<div><button type="button" class="manual-entry-button" id="suggest-title">Suggest name with Claude</button><button type="button" class="secondary-button" id="use-title" hidden></button></div>');
+        name.insertAdjacentHTML?.('afterend', '<div><button type="button" class="manual-entry-button" id="suggest-title">Foreslå navn med Claude</button><button type="button" class="secondary-button" id="use-title" hidden></button></div>');
         const suggest = document.getElementById('suggest-title'), accept = document.getElementById('use-title');
         suggest.onclick = async () => {
           syncDraft(); const names = draft.ingredients.map(i => i.name);
@@ -695,7 +695,7 @@
           try {
             const title = await suggestMealTitle(names);
             if (!suggest.isConnected || JSON.stringify(draft.ingredients.map(i => i.name)) !== JSON.stringify(names)) return;
-            accept.textContent = 'Use: ' + title; accept.hidden = false;
+            accept.textContent = 'Brug: ' + title; accept.hidden = false;
             accept.onclick = () => { name.value = draft.name = title; nameEdited = true; accept.hidden = true; };
           } catch (error) { if (suggest.isConnected) showInlineError('food-error', error.message); }
           finally { suggest.disabled = false; }
@@ -705,25 +705,66 @@
       document.getElementById('food-text').oninput = e => { draft.description = e.target.value; };
       document.getElementById('analyze-food').onclick = async () => {
         const text = document.getElementById('food-text').value.trim() || document.getElementById('meal-name').value.trim();
-        if (!text) return showInlineError('food-error', 'Enter a meal name or description first.');
-        const button = document.getElementById('analyze-food'); button.disabled = true; button.textContent = 'Analyzing…';
+        if (!text) return showInlineError('food-error', 'Indtast først et navn eller en beskrivelse.');
+        const button = document.getElementById('analyze-food'); button.disabled = true; button.textContent = 'Analyserer…';
         try { const result = await analyzeFood(text, category); draft = prepareIngredientEditor({ ...result, name: nameEdited && draft.name.trim() ? draft.name.trim() : result.name, description: text, manualTotals: { protein: false, calories: false } }); portionOrigins = draft.ingredients.map(ing => startingIngredients.findIndex(j => ingredientNameKey(j.name) === ingredientNameKey(ing.name))); analyzedWithAI = true; quality = ''; ingredientBaseline = ingredientEditFingerprint(draft.ingredients); entryMode = 'analyzed'; renderFoodEditor(); }
-        catch (err) { button.disabled = false; button.textContent = 'Analyze with Claude'; showInlineError('food-error', err.message || 'Could not analyze that meal.'); }
+        catch (err) { button.disabled = false; button.textContent = 'Analysér med Claude'; showInlineError('food-error', err.message || 'Måltidet kunne ikke analyseres.'); }
       };
       const manualButton = document.getElementById('manual-food'); if (manualButton) manualButton.onclick = () => { draft = prepareIngredientEditor({ ...draft, description: document.getElementById('food-text').value, ingredients: [blankIngredient()], manualTotals: { protein: false, calories: false } }); quality = 'manual'; ingredientBaseline = ingredientEditFingerprint(draft.ingredients); entryMode = 'manual'; renderFoodEditor(); };
       const cancel = document.getElementById('cancel-entry'); if (cancel) cancel.onclick = closeModal;
       if (!showNutrition) return;
+      root.querySelectorAll('[data-estimate]').forEach(button => {
+        const index = Number(button.dataset.estimate), row = button.closest('.ingredient-row');
+        const box = row.querySelector('[data-proposal]'), field = key => row.querySelector('[data-ing-field="'+key+'"]');
+        let revision = 0;
+        for (const key of ['name','proteinPer100g','caloriesPer100g']) field(key).addEventListener('input', () => {
+          revision++; box.replaceChildren(); button.disabled = false;
+        });
+        button.onclick = async () => {
+          const name = field('name').value.trim(), current = ++revision;
+          box.replaceChildren();
+          if (!name) { box.textContent = 'Skriv ingrediensens navn først.'; return; }
+          const valid = () => button.isConnected && revision === current && field('name').value.trim() === name;
+          function offer(item, source) {
+            const line = document.createElement('p'), apply = document.createElement('button');
+            line.textContent = (source === 'saved' ? 'Gemt værdi' : 'AI-skøn') + ': ' + formatInput(item.proteinPer100g) + ' g protein · ' + formatInput(item.caloriesPer100g) + ' kcal pr. 100 g' + (item.assumption ? '. Antagelse: ' + item.assumption : '');
+            apply.type = 'button'; apply.className = 'secondary-button'; apply.textContent = source === 'saved' ? 'Brug gemt værdi' : 'Brug forslag';
+            apply.onclick = () => {
+              if (!valid()) return;
+              field('proteinPer100g').value = formatInput(item.proteinPer100g);
+              field('caloriesPer100g').value = formatInput(item.caloriesPer100g);
+              const target = draft.ingredients[index];
+              Object.assign(target, {proteinPer100g:item.proteinPer100g,caloriesPer100g:item.caloriesPer100g,nutritionSource:item.nutritionSource});
+              row.querySelector('[data-nutrition-source]').innerHTML = ingredientBadge(target);
+              markIngredientEdit(); draft = calculateFromIngredients(draft); updateCalculatedTotal();
+              revision++; box.replaceChildren();
+            };
+            box.append(line,apply);
+          }
+          async function ask() {
+            button.disabled = true; box.textContent = 'Henter skøn …';
+            try { const item = await estimateIngredient(name); if (valid()) { box.replaceChildren(); offer(item,'ai'); } }
+            catch (err) { if (valid()) box.textContent = err.message; }
+            finally { if (valid()) button.disabled = false; }
+          }
+          const matches = ingredientLibrary(name).filter(x => ingredientNameKey(x.ingredient.name) === ingredientNameKey(name));
+          if (!matches.length) return ask();
+          matches.forEach(x => offer(x.ingredient,'saved'));
+          const again = document.createElement('button'); again.type = 'button'; again.className = 'manual-entry-button';
+          again.textContent = 'Få et AI-skøn i stedet'; again.onclick = ask; box.append(again);
+        };
+      });
       document.getElementById('add-food-ingredient').onclick = () => chooseIngredient();
       root.querySelectorAll('[data-replace-ingredient]').forEach(b => b.onclick = () => chooseIngredient(Number(b.dataset.replaceIngredient)));
       function chooseIngredient(index = null) {
         syncDraft();
-        root.innerHTML = `<h3>${index === null ? 'Add ingredient' : 'Replace ' + escapeHtml(draft.ingredients[index].name)}</h3><div class="field"><input id="ingredient-search" type="search" placeholder="Search ingredients" aria-label="Search ingredients" /></div><div class="modal-actions"><button class="secondary-button" id="ingredient-back">Back</button><button class="primary-button" id="ingredient-new">Enter new ingredient</button></div><div id="ingredient-results"></div>`;
+        root.innerHTML = `<h3>${index === null ? 'Tilføj ingrediens' : 'Erstat ' + escapeHtml(draft.ingredients[index].name)}</h3><div class="field"><input id="ingredient-search" type="search" placeholder="Søg efter ingredienser" aria-label="Søg efter ingredienser" /></div><div class="modal-actions"><button class="secondary-button" id="ingredient-back">Tilbage</button><button class="primary-button" id="ingredient-new">Opret ingrediens</button></div><div id="ingredient-results"></div>`;
         const add = ingredient => { if (index === null) { portionOrigins.push(-1); draft.ingredients.push(clone(ingredient)); } else draft.ingredients[index] = { ...clone(ingredient), amount: draft.ingredients[index].amount }; markIngredientEdit(); draft = calculateFromIngredients(draft); renderFoodEditor(); };
         const search = document.getElementById('ingredient-search');
         const update = () => {
           const items = ingredientLibrary(search.value);
           const results = document.getElementById('ingredient-results');
-          results.innerHTML = items.length ? items.map((item, index) => `<button class="card library-meal" data-ingredient-choice="${index}"><span class="library-title"><strong>${escapeHtml(item.ingredient.name)}</strong>${ingredientBadge(item.ingredient)}</span><span>${roundInput(item.ingredient.proteinPer100g)} g protein · ${roundInput(item.ingredient.caloriesPer100g)} kcal /100 g</span><small>Used ${item.count} times</small></button>`).join('') : '<div class="empty-card">No ingredients found. Enter a new ingredient above.</div>';
+          results.innerHTML = items.length ? items.map((item, index) => `<button class="card library-meal" data-ingredient-choice="${index}"><span class="library-title"><strong>${escapeHtml(item.ingredient.name)}</strong>${ingredientBadge(item.ingredient)}</span><span>${formatInput(item.ingredient.proteinPer100g)} g protein · ${formatInput(item.ingredient.caloriesPer100g)} kcal /100 g</span><small>Brugt ${item.count} gange</small></button>`).join('') : '<div class="empty-card">Ingen ingredienser fundet. Opret en ny ingrediens ovenfor.</div>';
           results.querySelectorAll('[data-ingredient-choice]').forEach(button => button.onclick = () => add({ ...items[Number(button.dataset.ingredientChoice)].ingredient, amount: 0 }));
         };
         search.oninput = update;
@@ -737,7 +778,7 @@
           state.copiedMeal = mealCopySnapshot({ ...draft, category, quality });
           selectedDate = localDateKey(new Date());
           activateToday();
-          saveState(); closeModal(); renderToday(); toast('Meal copied — ready to paste today');
+          saveState(); closeModal(); renderToday(); toast('Måltidet er kopieret · klar til at indsætte i dag');
         };
       }
       root.querySelectorAll('.ingredient-row input').forEach(input => input.addEventListener('input', () => { draft.ingredients = readIngredientRows(draft.ingredients); markIngredientEdit(); draft = calculateFromIngredients({ ...draft, manualTotals: { protein: false, calories: false } }); updateCalculatedTotal(); }));
@@ -745,8 +786,8 @@
       const del = document.getElementById('delete-entry'); if (del) del.onclick = () => { const d = getDay(selectedDate); d.entries = d.entries.filter(e => e.id !== existing.id); saveState(); closeModal(); renderToday(); };
       document.getElementById('save-entry').onclick = () => {
         syncDraft();
-        if (!draft.name.trim() && !draft.description.trim()) return showInlineError('food-error', 'Enter a meal name or description.');
-        if (!draft.ingredients.length) return showInlineError('food-error', 'Add at least one ingredient.');
+        if (!draft.name.trim() && !draft.description.trim()) return showInlineError('food-error', 'Indtast et måltidsnavn eller en beskrivelse.');
+        if (!draft.ingredients.length) return showInlineError('food-error', 'Tilføj mindst én ingrediens.');
         const d = getDay(selectedDate);
         const description = draft.description.trim();
         const entry = { id: existing?.id || uid(), category, description, name: draft.name.trim() || description, quality, protein: num(draft.protein), calories: num(draft.calories), manualTotals: { protein: false, calories: false }, ingredients: activeIngredients(draft.ingredients), source: analyzedWithAI ? 'ai' : (originalMeal?.source || 'manual'), ...(existing?.savedMealId ? { savedMealId: existing.savedMealId } : {}) };
@@ -775,36 +816,46 @@
         const idx = d.entries.findIndex(e => e.id === entry.id);
         if (idx >= 0) d.entries[idx] = entry; else d.entries.push(entry);
         saveState(); closeModal(); activateToday(); renderToday();
-        const mealMessage = existing ? 'Meal updated' : 'Meal added';
-        if (newNames.length) toast(`${mealMessage}. Added to ingredient library: ${newNames.join(', ')}`, 5000);
+        const mealMessage = existing ? 'Måltidet er opdateret' : 'Måltidet er tilføjet';
+        if (newNames.length) toast(`${mealMessage}. Føjet til ingrediensbiblioteket: ${newNames.join(', ')}`, 5000);
         else toast(mealMessage);
       };
       function syncDraft() { draft.name = document.getElementById('meal-name').value; draft.description = document.getElementById('food-text').value; if (root.querySelectorAll('.ingredient-row').length) draft.ingredients = readIngredientRows(draft.ingredients); markIngredientEdit(); draft = calculateFromIngredients({ ...draft, manualTotals: { protein: false, calories: false }, manualWeightG: undefined, per100Totals: null }); }
-      function updateCalculatedTotal() { const el = document.getElementById('calculated-meal-total'); if (el) el.innerHTML = `Meal total: <strong>${roundMacro(draft.protein)} g protein · ${Math.round(draft.calories)} kcal</strong>`; }
+      function updateCalculatedTotal() { const el = document.getElementById('calculated-meal-total'); if (el) el.innerHTML = `Måltid i alt: <strong>${roundMacro(draft.protein)} g protein · ${Math.round(draft.calories)} kcal</strong>`; }
     }
   }
 
   function openExistingEntry(id) { const entry = getDay(selectedDate).entries.find(e => e.id === id); if (entry) openFoodModal(entry.category, entry); }
+  const nutritionRule = 'Brug næringsdeklarationen, hvis brugeren oplyser den. Ellers skøn protein og kcal pr. 100 g spiselig vare i den beskrevne form. Skeln mellem rå, kogt, tør, drænet og tilberedt. Påstå aldrig, at et skøn er producentens tal eller et databaseopslag. Svar på dansk; bevar mærke- og produktnavne.';
   async function analyzeFood(text, mealType) {
     const apiKey = (state.settings.claudeApiKey || '').trim();
-    if (!apiKey) { const demo = localEstimate(text); if (demo) return demo; throw new Error('Add your Claude API key in Settings first.'); }
-    if (!apiKey.startsWith('sk-ant-')) throw new Error('That does not look like an Anthropic API key. It should begin with sk-ant-.');
+    if (!apiKey) throw new Error('Tilføj først din Claude-nøgle under Indstillinger.');
+    if (!apiKey.startsWith('sk-ant-')) throw new Error('Nøglen til Claude skal begynde med sk-ant-.');
     const system = `You are the nutrition analysis engine for a personal iPhone food tracker. The user may write in English or Danish. Estimate practical everyday nutrition with protein as the primary measurement and calories as the only secondary measurement. Explicit quantities are constraints, not a total meal budget. A weight directly before an ingredient belongs to that ingredient alone, even when other foods follow with "and", "with", "og" or "med". Keep every stated ingredient weight exactly; estimate sensible portions independently only for ingredients with no stated amount. Example: "200g of chicken and cabbage with bread" means chicken amount=200, plus an estimated cabbage portion and an estimated bread portion; NEVER divide the 200g among chicken, cabbage and bread. Danish example: "200 g kylling med kål og brød" also fixes chicken at 200 g. Only distribute a weight across a mixed dish when the user explicitly describes a total, combined weight or a serving of that mixed dish (for example "200g in total of chicken, cabbage and bread" or "200g chicken and cabbage stew"). Preserve separate weights such as "200g chicken and 50g bread". Do not shrink stated weights to fit typical portions or calorie assumptions. Use grams for ingredient amounts whenever possible; convert pieces, scoops and millilitres to a practical edible gram weight. Return ONLY valid JSON exactly shaped as: {"name":"short meal name","protein":0,"calories":0,"ingredients":[{"name":"ingredient","amount":0,"proteinPer100g":0,"caloriesPer100g":0}]}. Do not return any other nutrition fields. Totals should equal the sum of amount/100 multiplied by each per-100g value, allowing normal rounding.`;
-    const output = await claudeText(apiKey, system, `Meal type: ${mealType}.\nFood: ${text}`, 1400);
-    let raw; try { raw = JSON.parse(output.replace(/^\x60{3}(?:json)?\s*/i, '').replace(/\s*\x60{3}$/, '')); } catch { throw new Error('Claude returned nutrition data in an unexpected format. Try Analyze again.'); }
-    const normalized = normalizeAIResult(raw); if (!normalized) throw new Error('Claude returned incomplete nutrition data. Try Analyze again.'); return normalized;
+    const output = await claudeText(apiKey, system + " " + nutritionRule + " Skriv alle nye navne på dansk. Hvis rå eller tilberedt er en væsentlig antagelse, angiv den kort i ingrediensnavnet.", `Måltidstype: ${MEAL_LABELS[mealType] || mealType}.\nBeskrivelse: ${text}`, 1400);
+    let raw; try { raw = JSON.parse(output.replace(/^\x60{3}(?:json)?\s*/i, '').replace(/\s*\x60{3}$/, '')); } catch { throw new Error('Claude returnerede et ugyldigt svar. Prøv igen.'); }
+    const normalized = normalizeAIResult(raw); if (!normalized) throw new Error('Der manglede næringsværdier i svaret. Prøv igen.'); return normalized;
+  }
+  async function estimateIngredient(name) {
+    const key = (state.settings.claudeApiKey || '').trim();
+    if (!key.startsWith('sk-ant-')) throw new Error('Tilføj en gyldig Claude-nøgle under Indstillinger.');
+    const answer = await claudeText(key, nutritionRule + ' Anslå kun den ene ingrediens. Returnér kun JSON: {"proteinPer100g":tal,"caloriesPer100g":tal,"assumption":"kort antagelse på dansk eller tom streng"}. Angiv kun en antagelse, hvis den gør væsentlig forskel. Angiv ingen portionsstørrelse.', JSON.stringify({ingrediens:name}), 220);
+    let raw; try { raw = JSON.parse(answer); } catch {}
+    const ok = (v,max) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= max;
+    if (!raw || !ok(raw.proteinPer100g,100) || !ok(raw.caloriesPer100g,1000)) throw new Error('Claude gav ikke et brugbart skøn. Prøv igen, eller indtast værdierne selv.');
+    return {proteinPer100g:roundInput(raw.proteinPer100g),caloriesPer100g:roundInput(raw.caloriesPer100g),assumption:typeof raw.assumption === 'string' ? raw.assumption.slice(0,180) : '',nutritionSource:'ai'};
   }
   async function suggestMealTitle(names) {
     const key = (state.settings.claudeApiKey || '').trim();
-    if (!key) throw new Error('Add your Claude API key in Settings to suggest a name.');
-    const title = await claudeText(key, 'Give one short meal title based only on these ingredient names. Preserve distinctive product names and the language of the ingredients, including Danish. Return plain text only.', JSON.stringify(names), 80);
-    if (!title) throw new Error('No name suggested. Try again.');
+    if (!key) throw new Error('Tilføj din Claude-nøgle under Indstillinger for at få et navneforslag.');
+    const title = await claudeText(key, 'Give one short meal title based only on these ingredient names. Write in Danish. Preserve distinctive product names. Return plain text only.', JSON.stringify(names), 80);
+    if (!title) throw new Error('Intet navneforslag. Prøv igen.');
     return title.slice(0, 120);
   }
   async function claudeText(apiKey, system, prompt, maxTokens) {
     let response;
-    try { response = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' }, body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: maxTokens, temperature: 0, system, messages: [{ role: 'user', content: prompt }] }) }); } catch { throw new Error('Could not reach Claude. Check your internet connection and try again.'); }
-    if (!response.ok) { let detail = ''; try { detail = (await response.json())?.error?.message || ''; } catch {} if (response.status === 401) throw new Error('Claude rejected the API key. Check the key in Settings.'); if (response.status === 429) throw new Error('Claude rate limit reached. Try again shortly.'); throw new Error(detail || `Claude API returned ${response.status}.`); }
+    try { response = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' }, body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: maxTokens, temperature: 0, system, messages: [{ role: 'user', content: prompt }] }) }); } catch { throw new Error('Kunne ikke kontakte Claude. Tjek internetforbindelsen, og prøv igen.'); }
+    if (!response.ok) { if (response.status === 401) throw new Error('Claude afviste nøglen. Kontrollér den under Indstillinger.'); if (response.status === 429) throw new Error('For mange forespørgsler til Claude. Prøv igen om lidt.'); throw new Error(`Claude svarede med fejlkode ${response.status}.`); }
     const data = await response.json(); return (data?.content?.find(block => block.type === 'text')?.text || '').trim();
   }
 
@@ -812,14 +863,14 @@
     if (!raw || typeof raw !== 'object' || !Array.isArray(raw.ingredients)) return null;
     const ingredients = activeIngredients(raw.ingredients).map(i => ({ ...i, nutritionSource: 'ai' }));
     if (!ingredients.length) return null;
-    return calculateFromIngredients({ name: String(raw.name || 'Meal'), protein: 0, calories: 0, ingredients });
+    return calculateFromIngredients({ name: String(raw.name || 'Måltid'), protein: 0, calories: 0, ingredients });
   }
   function normalizeExisting(item) {
     const ingredients = activeIngredients(item?.ingredients);
     const totalAmount = ingredients.reduce((sum, ingredient) => sum + num(ingredient.amount), 0);
     const fallbackProtein = totalAmount ? num(item.protein) * 100 / totalAmount : 0;
     const fallbackCalories = totalAmount ? num(item.calories) * 100 / totalAmount : 0;
-    return { id: item.id, quality: item.quality || (item.source === 'manual' ? 'manual' : ''), name: item.name || item.description || 'Meal', description: item.description || item.name || '', category: MEAL_TYPES.includes(item.category) ? item.category : 'snacks', protein: num(item.protein), calories: num(item.calories), manualTotals: normalizeManualTotals(item.manualTotals, true), ...(item.manualWeightG != null ? { manualWeightG: num(item.manualWeightG) } : {}), per100Totals: normalizePer100Totals(item.per100Totals, item, totalAmount || num(item.manualWeightG)), ingredients: ingredients.map(ingredient => ({ ...ingredient, proteinPer100g: ingredient.proteinPer100g != null && Number.isFinite(Number(ingredient.proteinPer100g)) ? num(ingredient.proteinPer100g) : fallbackProtein, caloriesPer100g: ingredient.caloriesPer100g != null && Number.isFinite(Number(ingredient.caloriesPer100g)) ? num(ingredient.caloriesPer100g) : fallbackCalories })), usageCount: num(item.usageCount), source: item.source, savedMealId: item.savedMealId };
+    return { id: item.id, quality: item.quality || (item.source === 'manual' ? 'manual' : ''), name: item.name || item.description || 'Måltid', description: item.description || item.name || '', category: MEAL_TYPES.includes(item.category) ? item.category : 'snacks', protein: num(item.protein), calories: num(item.calories), manualTotals: normalizeManualTotals(item.manualTotals, true), ...(item.manualWeightG != null ? { manualWeightG: num(item.manualWeightG) } : {}), per100Totals: normalizePer100Totals(item.per100Totals, item, totalAmount || num(item.manualWeightG)), ingredients: ingredients.map(ingredient => ({ ...ingredient, proteinPer100g: ingredient.proteinPer100g != null && Number.isFinite(Number(ingredient.proteinPer100g)) ? num(ingredient.proteinPer100g) : fallbackProtein, caloriesPer100g: ingredient.caloriesPer100g != null && Number.isFinite(Number(ingredient.caloriesPer100g)) ? num(ingredient.caloriesPer100g) : fallbackCalories })), usageCount: num(item.usageCount), source: item.source, savedMealId: item.savedMealId };
   }
   function calculateFromIngredients(meal) { if (!meal.ingredients.length) return meal; return { ...meal, protein: meal.ingredients.reduce((s, i) => s + num(i.amount) * num(i.proteinPer100g) / 100, 0), calories: meal.ingredients.reduce((s, i) => s + num(i.amount) * num(i.caloriesPer100g) / 100, 0) }; }
   function totalIngredientAmount(ingredients) { return (Array.isArray(ingredients) ? ingredients : []).reduce((sum, ingredient) => sum + num(ingredient.amount), 0); }
@@ -843,7 +894,7 @@
 
 
   function ingredientBadge(ingredient) {
-    return ingredient.nutritionSource === 'manual' ? '' : '<small class="meal-quality">' + (ingredient.nutritionSource === 'ai' ? 'AI' : 'Source unknown') + '</small>';
+    return ingredient.nutritionSource === 'manual' ? '' : '<small class="meal-quality">' + (ingredient.nutritionSource === 'ai' ? 'AI-skøn' : 'Ukendt kilde') + '</small>';
   }
   function ingredientNameKey(name) {
     return String(name).trim().toLowerCase().replace(/\s+/g, ' ');
@@ -872,18 +923,18 @@
       .sort((a, b) => b.count - a.count || a.ingredient.name.localeCompare(b.ingredient.name));
   }
 
-  function ingredientRowHtml(ing, i) { return `<div class="ingredient-row"><input aria-label="Ingredient" data-ing-index="${i}" data-ing-field="name" value="${escapeAttr(ing.name || '')}" /><div class="amount-input"><input aria-label="Amount in grams" data-ing-index="${i}" data-ing-field="amount" inputmode="decimal" value="${escapeAttr(roundInput(ing.amount))}" /><span>g</span></div><button class="replace-ingredient" type="button" data-replace-ingredient="${i}">Replace</button><div class="ingredient-nutrients"><span data-nutrition-source style="grid-column:1/-1">${ingredientBadge(ing)}</span><label><span>Protein /100g</span><input aria-label="Protein per 100 grams" data-ing-index="${i}" data-ing-field="proteinPer100g" inputmode="decimal" value="${escapeAttr(roundInput(ing.proteinPer100g))}" /></label><label><span>kcal /100g</span><input aria-label="Calories per 100 grams" data-ing-index="${i}" data-ing-field="caloriesPer100g" inputmode="decimal" value="${escapeAttr(roundInput(ing.caloriesPer100g))}" /></label></div><button class="ingredient-remove" type="button" data-remove-ingredient="${i}" aria-label="Remove ingredient">×</button></div>`; }
-  function readIngredientRows(previous = []) { return [...document.querySelectorAll('.ingredient-row')].map((row, index) => { const values = {}; row.querySelectorAll('input').forEach(input => { const field = input.dataset.ingField; values[field] = field === 'name' ? input.value.trim() : num(input.value); }); const old = previous[index]; const changed = old && (roundInput(old.proteinPer100g) !== num(values.proteinPer100g) || roundInput(old.caloriesPer100g) !== num(values.caloriesPer100g)); const nutritionSource = changed ? 'manual' : old?.nutritionSource; const badge = row.querySelector?.('[data-nutrition-source]'); if (badge) badge.innerHTML = ingredientBadge({ nutritionSource }); return { name: values.name || 'Ingredient', amount: num(values.amount), proteinPer100g: num(values.proteinPer100g), caloriesPer100g: num(values.caloriesPer100g), ...(nutritionSource ? { nutritionSource } : {}) }; }); }
+  function ingredientRowHtml(ing, i) { return `<div class="ingredient-row"><input aria-label="Ingrediens" data-ing-index="${i}" data-ing-field="name" value="${escapeAttr(ing.name || '')}" /><div class="amount-input"><input aria-label="Mængde i gram" data-ing-index="${i}" data-ing-field="amount" inputmode="decimal" value="${escapeAttr(formatInput(ing.amount))}" /><span>g</span></div><button class="replace-ingredient" type="button" data-replace-ingredient="${i}">Erstat</button><div class="ingredient-nutrients"><span data-nutrition-source style="grid-column:1/-1">${ingredientBadge(ing)}</span><label><span>Protein pr. 100 g</span><input aria-label="Protein pr. 100 gram" data-ing-index="${i}" data-ing-field="proteinPer100g" inputmode="decimal" value="${escapeAttr(formatInput(ing.proteinPer100g))}" /></label><label><span>kcal pr. 100 g</span><input aria-label="Kcal pr. 100 gram" data-ing-index="${i}" data-ing-field="caloriesPer100g" inputmode="decimal" value="${escapeAttr(formatInput(ing.caloriesPer100g))}" /></label></div><div class="ingredient-lookup" style="grid-column:1/-1"><button type="button" class="manual-entry-button" data-estimate="${i}">Anslå næringsindhold</button><div data-proposal aria-live="polite"></div></div><button class="ingredient-remove" type="button" data-remove-ingredient="${i}" aria-label="Fjern ingrediens">×</button></div>`; }
+  function readIngredientRows(previous = []) { return [...document.querySelectorAll('.ingredient-row')].map((row, index) => { const values = {}; row.querySelectorAll('input').forEach(input => { const field = input.dataset.ingField; values[field] = field === 'name' ? input.value.trim() : num(input.value); }); const old = previous[index]; const changed = old && (roundInput(old.proteinPer100g) !== num(values.proteinPer100g) || roundInput(old.caloriesPer100g) !== num(values.caloriesPer100g)); const nutritionSource = changed ? 'manual' : old?.nutritionSource; const badge = row.querySelector?.('[data-nutrition-source]'); if (badge) badge.innerHTML = ingredientBadge({ nutritionSource }); return { name: values.name || 'Ingrediens', amount: num(values.amount), proteinPer100g: num(values.proteinPer100g), caloriesPer100g: num(values.caloriesPer100g), ...(nutritionSource ? { nutritionSource } : {}) }; }); }
   function mealOptions(selected) { return MEAL_TYPES.map(t => `<option value="${t}" ${t === selected ? 'selected' : ''}>${MEAL_LABELS[t]}</option>`).join(''); }
   function hasWeight(day) { return Boolean(day) && Number.isFinite(Number(day.weightKg)) && Number(day.weightKg) > 0; }
   function averageNumbers(values) { const valid = values.map(Number).filter(Number.isFinite); return valid.length ? valid.reduce((sum, value) => sum + value, 0) / valid.length : null; }
   function weekStartKey(key) { const date = parseLocalDate(key), weekday = date.getDay() || 7; date.setDate(date.getDate() - weekday + 1); return localDateKey(date); }
   function weekDates(startDate) { return Array.from({ length: 7 }, (_, i) => shiftDate(startDate, i)); }
-  function formatWeight(value) { return Number(value).toFixed(1); }
-  function signedWeight(value) { const rounded = Number(value).toFixed(1); return Number(value) > 0 ? `+${rounded}` : rounded; }
-  function formatShortDay(key) { return new Intl.DateTimeFormat('en', { weekday: 'short', day: 'numeric', month: 'short' }).format(parseLocalDate(key)); }
-  function formatWeekdayLetter(key) { return new Intl.DateTimeFormat('en', { weekday: 'narrow' }).format(parseLocalDate(key)); }
-  function formatWeekLabel(key) { const date = parseLocalDate(key), target = new Date(date.valueOf()); target.setDate(target.getDate() + 3); const firstThursday = new Date(target.getFullYear(), 0, 4, 12); firstThursday.setDate(firstThursday.getDate() + (4 - (firstThursday.getDay() || 7))); const week = 1 + Math.round((target - firstThursday) / 604800000); return `Week ${week} · ${formatShortDay(key)}`; }
+  function formatWeight(value) { return Number(value).toFixed(1).replace('.', ','); }
+  function signedWeight(value) { const rounded = formatWeight(value); return Number(value) > 0 ? `+${rounded}` : rounded; }
+  function formatShortDay(key) { return new Intl.DateTimeFormat('da-DK', { weekday: 'short', day: 'numeric', month: 'short' }).format(parseLocalDate(key)); }
+  function formatWeekdayLetter(key) { return new Intl.DateTimeFormat('da-DK', { weekday: 'narrow' }).format(parseLocalDate(key)); }
+  function formatWeekLabel(key) { const date = parseLocalDate(key), target = new Date(date.valueOf()); target.setDate(target.getDate() + 3); const firstThursday = new Date(target.getFullYear(), 0, 4, 12); firstThursday.setDate(firstThursday.getDate() + (4 - (firstThursday.getDay() || 7))); const week = 1 + Math.round((target - firstThursday) / 604800000); return `Uge ${week} · ${formatShortDay(key)}`; }
   function roundExport(value) { return Math.round(num(value) * 100) / 100; }
   function yesNo(value) { return value ? 'yes' : 'no'; }
   function csvCell(value) { const text = String(value ?? ''); return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text; }
@@ -896,11 +947,12 @@
   function uid() { return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`; }
   function clone(v) { return JSON.parse(JSON.stringify(v)); }
   function mealCopySnapshot(meal) {
-    return { quality: meal.quality || (meal.source === 'manual' ? 'manual' : ''), name: meal.name || meal.description || 'Meal', description: meal.description || '', category: MEAL_TYPES.includes(meal.category) ? meal.category : 'snacks', protein: num(meal.protein), calories: num(meal.calories), manualTotals: normalizeManualTotals(meal.manualTotals, true), ...(meal.manualWeightG != null ? { manualWeightG: num(meal.manualWeightG) } : {}), ...(meal.per100Totals ? { per100Totals: { ...meal.per100Totals } } : {}), ingredients: activeIngredients(meal.ingredients), source: 'copy' };
+    return { quality: meal.quality || (meal.source === 'manual' ? 'manual' : ''), name: meal.name || meal.description || 'Måltid', description: meal.description || '', category: MEAL_TYPES.includes(meal.category) ? meal.category : 'snacks', protein: num(meal.protein), calories: num(meal.calories), manualTotals: normalizeManualTotals(meal.manualTotals, true), ...(meal.manualWeightG != null ? { manualWeightG: num(meal.manualWeightG) } : {}), ...(meal.per100Totals ? { per100Totals: { ...meal.per100Totals } } : {}), ingredients: activeIngredients(meal.ingredients), source: 'copy' };
   }
-  function activeIngredients(ingredients) { return (Array.isArray(ingredients) ? ingredients : []).map(item => ({ ...(['ai', 'manual'].includes(item?.nutritionSource) ? { nutritionSource: item.nutritionSource } : {}), name: String(item?.name || 'Ingredient'), amount: num(item?.amount), proteinPer100g: Number.isFinite(Number(item?.proteinPer100g)) ? num(item.proteinPer100g) : null, caloriesPer100g: Number.isFinite(Number(item?.caloriesPer100g)) ? num(item.caloriesPer100g) : null })); }
+  function activeIngredients(ingredients) { return (Array.isArray(ingredients) ? ingredients : []).map(item => ({ ...(['ai', 'manual'].includes(item?.nutritionSource) ? { nutritionSource: item.nutritionSource } : {}), name: String(item?.name || 'Ingrediens'), amount: num(item?.amount), proteinPer100g: Number.isFinite(Number(item?.proteinPer100g)) ? num(item.proteinPer100g) : null, caloriesPer100g: Number.isFinite(Number(item?.caloriesPer100g)) ? num(item.caloriesPer100g) : null })); }
   function normalizeManualTotals(value, legacyFallback = false) { return { protein: typeof value?.protein === 'boolean' ? value.protein : legacyFallback, calories: typeof value?.calories === 'boolean' ? value.calories : legacyFallback }; }
   function hasNumberInput(id) { const value = document.getElementById(id)?.value.trim().replace(',', '.'); return value !== '' && Number.isFinite(Number(value)) && Number(value) >= 0; }
+  function formatInput(value) { return String(roundInput(value)).replace('.', ','); }
   function roundInput(value) { const n = num(value); return Math.round(n * 100) / 100; }
   function selectNumericInputContent(event) { const input = event.target; if (!(input instanceof HTMLInputElement) || !input.matches('[inputmode="decimal"],[inputmode="numeric"],input[type="number"]') || !input.value) return; const selectAll = () => { if (document.activeElement === input) input.select(); }; selectAll(); setTimeout(selectAll, 0); }
   function applyTheme() { const choice = state.settings.theme || 'system'; const resolved = choice === 'system' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : choice; document.documentElement.dataset.theme = resolved; const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = resolved === 'dark' ? '#111312' : '#f5f3ed'; }
@@ -914,12 +966,12 @@
     toastRoot.classList.add('show');
     setTimeout(() => { if (version === toastVersion) toastRoot.classList.remove('show'); }, duration);
   }
-  function roundMacro(v) { const n = num(v); return Math.abs(n - Math.round(n)) < 0.05 ? Math.round(n) : n.toFixed(1); }
+  function roundMacro(v) { const n = num(v); return Math.abs(n - Math.round(n)) < 0.05 ? Math.round(n) : n.toFixed(1).replace('.', ','); }
   function localDateKey(d) { const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0'); return `${y}-${m}-${day}`; }
   function parseLocalDate(key) { const [y, m, d] = key.split('-').map(Number); return new Date(y, m - 1, d, 12); }
   function shiftDate(key, amount) { const d = parseLocalDate(key); d.setDate(d.getDate() + amount); return localDateKey(d); }
-  function formatDate(key) { return new Intl.DateTimeFormat('en', { weekday: 'short', day: 'numeric', month: 'short' }).format(parseLocalDate(key)); }
-  function formatLongDate(key) { return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'long', year: 'numeric' }).format(parseLocalDate(key)); }
+  function formatDate(key) { return new Intl.DateTimeFormat('da-DK', { weekday: 'short', day: 'numeric', month: 'short' }).format(parseLocalDate(key)); }
+  function formatLongDate(key) { return new Intl.DateTimeFormat('da-DK', { day: 'numeric', month: 'long', year: 'numeric' }).format(parseLocalDate(key)); }
   function escapeHtml(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
   function escapeAttr(v) { return escapeHtml(v); }
 })();
