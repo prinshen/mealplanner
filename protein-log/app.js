@@ -50,7 +50,7 @@
     if (storageWarning) window.alert(storageWarning);
   }
 
-  function defaultState() { return { settings: { proteinTarget: 160, calorieTarget: 2500, theme: 'system', claudeApiKey: '' }, days: {}, savedMeals: [], copiedMeal: null }; }
+  function defaultState() { return { settings: { proteinTarget: 150, calorieTarget: 2500, theme: 'system', claudeApiKey: '' }, days: {}, savedMeals: [], copiedMeal: null }; }
   function navigateDayBySwipe(dx, dy) { if (Math.abs(dx) < 55 || Math.abs(dx) < Math.abs(dy) * 1.25) return false; const today = localDateKey(new Date()); if (dx > 0) selectedDate = shiftDate(selectedDate, -1); else if (selectedDate < today) selectedDate = shiftDate(selectedDate, 1); else return false; renderToday(); return true; }
   function loadState() {
     try {
@@ -185,7 +185,7 @@
     const date = previewDate || selectedDate;
     const day = previewDate ? (state.days[date] || { entries: [] }) : getDay(date);
     const totals = dayTotals(day);
-    const proteinTarget = Number(state.settings.proteinTarget) || 160;
+    const proteinTarget = Number(state.settings.proteinTarget) || 150;
     const calorieTarget = Math.max(1, Number(state.settings.calorieTarget) || 2500);
     const pct = Math.min(1, totals.protein / proteinTarget);
     const proteinRemaining = Math.max(0, proteinTarget - totals.protein);
@@ -198,6 +198,7 @@
     const html = `<section class="day-view">
       <div class="brand-label">Protein Log</div><div class="date-nav"><button class="date-button" id="prev-day" aria-label="Forrige dag">‹</button><div class="date-center"><label class="date-click-target" for="date-picker"><div class="date-label">${escapeHtml(isToday ? 'I dag' : formatDate(date))}</div><div class="date-sub">${escapeHtml(formatLongDate(date))}</div></label><input class="date-picker" id="date-picker" type="date" max="${today}" value="${date}" /></div><button class="date-button" id="next-day" aria-label="Næste dag" ${canNext ? '' : 'disabled'}>›</button></div>
       <div class="card progress-card"><div class="progress-ring" style="--progress:${Math.round(pct * 360)}deg;--protein-color:${proteinColor(totals.protein, proteinTarget)}"><div class="ring-content"><div class="ring-number">${roundMacro(proteinRemaining)} g</div><div class="ring-target">protein tilbage</div></div></div><div class="hero-stats"><strong>${roundMacro(totals.protein)} g spist</strong><div class="ring-consumed">Mål ${roundMacro(proteinTarget)} g</div><div class="calorie-summary"><div><strong>${Math.round(totals.calories).toLocaleString('da-DK')} kcal</strong><span>/ ${Math.round(calorieTarget).toLocaleString('da-DK')} kcal</span></div><progress class="calorie-bar" aria-label="Kalorier i forhold til dagens pejlemærke" max="${calorieTarget}" value="${Math.min(calorieTarget, totals.calories)}"></progress></div></div></div><details class="daily-averages"><summary>Registrerede gennemsnit</summary><div class="average-selector" aria-label="Periode"><button data-average-period="7" aria-pressed="${averagePeriod === 7}">7 dage</button><button data-average-period="30" aria-pressed="${averagePeriod === 30}">30 dage</button></div><div class="average-stat">${average.count ? `<strong>${roundMacro(average.protein)} g protein · ${Math.round(average.calories)} kcal</strong> i gennemsnit<br>Registrerede dage: ${average.count} · seneste ${averagePeriod} dage` : `Ingen registrerede måltider de seneste ${averagePeriod} dage`}</div><div class="weight-average">${renderWeightAverage(weightTrend, averagePeriod)}</div></details>
+      ${day.entries.length ? dailyContextHtml(dayContext(day.entries,totals.calories,m=>m.protein)) : ''}
       ${!hasWeight(day) ? weightCardHtml(day) : ''}
       ${!day.creatine ? supplementCardHtml('creatine', 'Kreatin', day.creatine) : ''}
       ${!day.vitamins ? supplementCardHtml('vitamins', 'Vitaminer', day.vitamins) : ''}
@@ -241,7 +242,7 @@
     activeTab = 'today';
     document.querySelectorAll('.tab-button').forEach(button => button.classList.toggle('active', button.dataset.tab === 'today'));
   }
-  function proteinColor(value, target = 160) {
+  function proteinColor(value, target = 150) {
     const grams = Math.max(0, num(value));
     if (grams < 100) return '#b56a62';
     if (grams >= num(target) * .85) return '#237a52';
@@ -344,17 +345,19 @@
       ${reviewPeriod === 7 ? `<div class="field"><label for="export-week-select">Vælg uge · eksportstatus</label><select id="export-week-select">${exportWeekOptions()}</select></div>` : ''}
       <div class="week-nav"><button class="date-button" id="prev-week" aria-label="Forrige periode">‹</button><label class="week-picker-label" for="week-picker"><strong>${reviewPeriod === 7 ? escapeHtml(formatWeekLabel(selectedWeekStart)) : '30 dage frem til ' + escapeHtml(formatShortDay(selectedTrendEnd))}</strong><span>${reviewPeriod === 7 ? 'Vælg uge' : 'Vælg slutdato'}</span></label><input id="week-picker" class="week-picker" type="date" value="${reviewPeriod === 7 ? selectedWeekStart : selectedTrendEnd}"/><button class="date-button" id="next-week" aria-label="Næste periode">›</button></div>
       <div class="weekly-grid">
-        <div class="card metric-card primary-metric"><span>Gennemsnitlig morgenvægt</span><strong>${s.averageWeightKg == null ? '—' : `${formatWeight(s.averageWeightKg)} kg`}</strong><small>${s.weightEntries} vejning${s.weightEntries === 1 ? '' : 'er'}${s.weightChangeKg == null ? '' : ` · ${signedWeight(s.weightChangeKg)} kg i forhold til ${comparison}`}</small></div>
-        <div class="card metric-card"><span>Protein i snit</span><strong>${s.loggedNutritionDays ? `${roundMacro(s.averageProteinG)} g` : '—'}</strong><small>Registrerede dage: ${s.loggedNutritionDays}</small></div>
+        <div class="card metric-card primary-metric"><span>Gennemsnitlig morgenvægt</span><strong>${s.averageWeightKg == null ? '—' : `${formatWeight(s.averageWeightKg)} kg`}</strong><small>${s.weightEntries} vejning${s.weightEntries === 1 ? '' : 'er'}${s.weightConfidence ? ' · '+s.weightConfidence : ''}${s.weightChangeKg == null ? '' : ` · ${signedWeight(s.weightChangeKg)} kg i forhold til ${comparison}${reviewPeriod===7 && Math.min(s.weightEntries,s.previousWeightEntries)<3?' · usikkert skøn':''}`}</small></div>
+        <div class="card metric-card"><span>Protein i snit</span><strong>${s.loggedNutritionDays ? `${roundMacro(s.averageProteinG)} g/dag` : '—'}</strong><small>Registrerede dage: ${s.loggedNutritionDays}</small>${reviewPeriod===7 ? `<small>${s.proteinDays150}/7 dage ≥150 g<br>${s.proteinDaysUnder120}/7 dage &lt;120 g</small>` : ''} </div>
         <div class="card metric-card"><span>Kalorier i snit</span><strong>${s.loggedNutritionDays ? Math.round(s.averageCalories).toLocaleString('da-DK') : '—'}</strong><small>${s.loggedNutritionDays ? 'kcal pr. registreret dag' : 'Ingen måltider registreret'}</small></div>
-        <div class="card metric-card"><span>Træningspas</span><strong>${s.strengthWorkouts + s.runs + s.longBikeRides}</strong><small>${s.strengthWorkouts} styrke · ${s.runs} løb · ${s.longBikeRides} cykling</small></div>
+        <div class="card metric-card"><span>Træningspas</span><strong>${s.strengthWorkouts + s.runs + s.longBikeRides}</strong><small>${reviewPeriod===7 ? `Styrke: ${s.strengthWorkouts} · mål 2–3<br>Løb: ${s.runs} · mål ca. 1<br>Cykling: ${s.longBikeRides}` : `${s.strengthWorkouts} styrke · ${s.runs} løb · ${s.longBikeRides} cykling`}</small></div>
         <div class="card metric-card"><span>Kreatin</span><strong>${s.creatineDays}/${reviewPeriod}</strong><small>dage taget</small></div><div class="card metric-card"><span>Vitaminer</span><strong>${s.vitaminDays}/${reviewPeriod}</strong><small>Multivitamin og D-vitamin</small></div>
       </div>
-      <div class="card trend-card"><div class="trend-head"><strong>Protein over tid</strong><small>Registreret protein · ${s.loggedNutritionDays} registrerede dage · stiplet linje: nuværende mål ${roundMacro(state.settings.proteinTarget || 160)} g</small></div>${trendChart(report.days, 'protein')}<div id="trend-meals" aria-live="polite"></div></div>
+      <div class="card trend-card"><div class="trend-head"><strong>Protein over tid</strong><small>Registreret protein · ${s.loggedNutritionDays} registrerede dage · stiplet linje: nuværende mål ${roundMacro(state.settings.proteinTarget || 150)} g</small></div>${trendChart(report.days, 'protein')}<div id="trend-meals" aria-live="polite"></div></div>
       <div class="card trend-card"><div class="trend-head"><strong>Vægtudvikling</strong><small>Morgenvejninger · fuldt optrukket linje: 7-dages gennemsnit</small></div><button class="secondary-button trend-range" id="weight-range" aria-pressed="${longWeightView}">${longWeightView ? '90 dage · tilbage til valgt periode' : 'Vis 90 dage'}</button>${trendChart(longWeightView ? weightWindow(report.weekEnd) : report.days, 'weight')}</div>
+      ${s.incompleteDays ? `<p class="daily-context">Muligvis ufuldstændig log: ${s.incompleteDays} af ${s.loggedNutritionDays} registrerede dage under 1.000 kcal. De indgår i gennemsnittet.</p>` : ''}
+      ${fourWeekCard(report)}
       ${proteinSources(start, reviewPeriod)}
       <div class="section-kicker">Daglig oversigt</div>
-      <div class="card daily-review">${report.days.map(d => `<div class="daily-review-row"><div><strong>${escapeHtml(formatShortDay(d.date))}</strong><small>${d.weightKg == null ? 'Ingen vejning' : `${formatWeight(d.weightKg)} kg`}</small></div><div class="daily-review-macros"><strong>${d.hasNutrition ? `${roundMacro(d.proteinG)} g protein` : 'Ingen måltider registreret'}</strong><small>${d.hasNutrition ? `${Math.round(d.calories)} kcal registreret` : '—'}</small></div></div>`).join('')}</div>
+      <div class="card daily-review">${report.days.map(d => `<div class="daily-review-row"><div><strong>${escapeHtml(formatShortDay(d.date))}</strong><small>${d.weightKg == null ? 'Ingen vejning' : `${formatWeight(d.weightKg)} kg`}</small></div><div class="daily-review-macros"><strong>${d.hasNutrition ? `${roundMacro(d.proteinG)} g protein` : 'Ingen måltider registreret'}</strong><small>${d.hasNutrition ? `${Math.round(d.calories)} kcal · Proteinankre: ${d.proteinAnchors}` : '—'}</small>${d.possiblyIncomplete ? '<small>Muligvis ufuldstændig log</small>' : ''}</div></div>`).join('')}</div>
       <div class="section-kicker">Eksportér ${reviewPeriod === 7 ? 'denne uge' : 'disse 30 dage'}</div>
       <div class="card settings-group"><strong>${escapeHtml(reportExportStatus(report))}</strong><div class="settings-help">${state.reportExports?.[reportKey(report)] ? `Seneste eksport: ${escapeHtml(new Date(state.reportExports[reportKey(report)].at).toLocaleString('da-DK'))} · ${escapeHtml(state.reportExports[reportKey(report)].format.toUpperCase())}. ` : ''}Eksporten starter, når du deler eller henter filen. Kontrollér, at den blev gemt. En ugerapport er ikke en fuld sikkerhedskopi.</div></div>
       <div class="card export-card"><div><strong>Kost- og vægtrapport</strong><small>Med dagstal, aktiviteter, kreatin, måltider og ingredienser.</small></div><div class="export-actions"><button class="primary-button" id="export-csv">Eksportér CSV</button><button class="secondary-button" id="export-json">Eksportér JSON</button></div></div>
@@ -379,7 +382,7 @@
   function reportKey(report) { return `${report.weekStart}/${report.periodDays || 7}`; }
   function reportSignature(report) {
     // Compact change detector, not a security hash. No duplicate meal history in metadata.
-    const text = JSON.stringify([report.summary, report.days]);
+    const text = JSON.stringify([report.summary, report.days, report.rollingFourWeeks]);
     let a = 2166136261, b = 5381;
     for (let i = 0; i < text.length; i++) { a = Math.imul(a ^ text.charCodeAt(i), 16777619); b = Math.imul(b, 33) ^ text.charCodeAt(i); }
     return `${a >>> 0}:${b >>> 0}:${text.length}`;
@@ -403,12 +406,19 @@
       const entries = Array.isArray(source.entries) ? source.entries : [];
       return { date, weightKg: hasWeight(source) ? Number(source.weightKg) : null, hasNutrition: entries.length > 0, calories: totals.calories, proteinG: totals.protein, creatine: Boolean(source.creatine), vitamins: Boolean(source.vitamins), strengthWorkout: Boolean(activities.strength), run: Boolean(activities.run), longBikeRide: Boolean(activities.longBike), meals: entries.map(entry => ({ id: entry.id, section: ({breakfast:'Breakfast',lunch:'Lunch',dinner:'Dinner',snacks:'Snacks'})[entry.category] || entry.category || '', name: entry.name || entry.description || 'Meal', description: entry.description || '', calories: num(entry.calories), proteinG: num(entry.protein), manualWeightG: entry.manualWeightG != null ? num(entry.manualWeightG) : null, ingredients: activeIngredients(entry.ingredients) })) };
     });
+    days.forEach(d => Object.assign(d, dayContext(d.meals, d.calories, m => m.proteinG)));
     const weights = days.map(d => d.weightKg).filter(v => v != null);
     const previousWeights = Array.from({ length: period }, (_, i) => shiftDate(startDate, -period + i)).map(date => state.days[date]).filter(hasWeight).map(day => Number(day.weightKg));
     const averageWeightKg = averageNumbers(weights);
     const previousAverageWeightKg = averageNumbers(previousWeights);
     const loggedDays = days.filter(d => d.hasNutrition);
     const summary = {
+      incompleteDays: loggedDays.filter(d => d.possiblyIncomplete).length,
+      proteinDays150: loggedDays.filter(d => d.proteinG >= 150).length,
+      proteinDaysUnder120: loggedDays.filter(d => d.proteinG < 120).length,
+      previousWeightEntries: previousWeights.length,
+      ...(period === 7 ? {weeklyActivityGoals:{strengthMin:2,strengthMax:3,runsApprox:1},practicalProteinTargetG:150} : {}),
+      weightConfidence: period === 7 ? weightConfidence(weights.length) : null,
       averageWeightKg,
       previousAverageWeightKg,
       weightChangeKg: averageWeightKg == null || previousAverageWeightKg == null ? null : averageWeightKg - previousAverageWeightKg,
@@ -422,19 +432,53 @@
       vitaminDays: days.filter(d => d.vitamins).length,
       creatineDays: days.filter(d => d.creatine).length
     };
-    return { periodDays: period, weekStart: startDate, weekEnd: dates[period - 1], dateRange: `${formatLongDate(startDate)} – ${formatLongDate(dates[period - 1])}`, summary, days };
+    const end = dates[period-1];
+    return { periodDays: period, weekStart: startDate, weekEnd: end, dateRange: `${formatLongDate(startDate)} – ${formatLongDate(end)}`, summary, days,
+      ...(period === 7 && startDate <= localDateKey(new Date()) ? {rollingFourWeeks: fourWeeks(end)} : {}) };
+  }
+
+  function dayContext(meals, calories, proteinOf) {
+    return {possiblyIncomplete: meals.length > 0 && calories < 1000, proteinAnchors: meals.filter(m => num(proteinOf(m)) >= 30).length};
+  }
+  function dailyContextHtml(c) {
+    return '<p class="daily-context">Proteinankre: '+c.proteinAnchors+' <span>(måltider med mindst 30 g protein)</span>'+(c.possiblyIncomplete?'<br>Muligvis ufuldstændig log':'')+'</p>';
+  }
+  function weightConfidence(n) { return n === 0 ? null : n < 3 ? 'Lav sikkerhed' : n < 5 ? 'Middel sikkerhed' : 'Høj sikkerhed'; }
+  function fourWeeks(weekEnd) {
+    const today = localDateKey(new Date()), end = weekEnd < today ? weekEnd : today, start = shiftDate(end,-27);
+    let protein=0, kcal=0, weight=0, logged=0, weighIns=0, incomplete=0, strength=0, runs=0;
+    for (let i=0;i<28;i++) {
+      const day=state.days[shiftDate(start,i)]; if (!day) continue;
+      if (day.entries.length) { const t=dayTotals(day); logged++; protein+=t.protein; kcal+=t.calories; if (t.calories<1000) incomplete++; }
+      if (hasWeight(day)) { weighIns++; weight+=Number(day.weightKg); }
+      if (day.activities?.strength) strength++; if(day.activities?.run) runs++;
+    }
+    return {start,end,loggedDays:logged,weightEntries:weighIns,incompleteDays:incomplete,proteinPerDay:logged?protein/logged:null,caloriesPerDay:logged?kcal/logged:null,averageWeightKg:weighIns?weight/weighIns:null,strengthPerWeek:strength/4,runsPerWeek:runs/4};
+  }
+  function fourWeekCard(report) {
+    const f=report.rollingFourWeeks,s=report.summary;
+    if (!f || report.weekStart > f.end) return '';
+    const row=(label,a,b,fmt)=>'<tr><th scope="row">'+label+'</th><td>'+(a==null?'—':fmt(a))+'</td><td>'+(b==null?'—':fmt(b))+'</td></tr>';
+    const integer=v=>Math.round(v).toLocaleString('da-DK'), decimal=v=>v.toLocaleString('da-DK',{maximumFractionDigits:1});
+    return '<section class="card trend-card four-week"><strong>Udvikling over 4 uger</strong><table><thead><tr><th scope="col">Registreret</th><th scope="col">Valgt uge</th><th scope="col">4-ugers snit</th></tr></thead><tbody>'+
+      row('Protein · g/dag',s.loggedNutritionDays?s.averageProteinG:null,f.proteinPerDay,decimal)+
+      row('Kalorier · kcal/dag',s.loggedNutritionDays?s.averageCalories:null,f.caloriesPerDay,integer)+
+      row('Morgenvægt · kg',s.averageWeightKg,f.averageWeightKg,formatWeight)+
+      row('Styrke · pas/uge',s.strengthWorkouts,f.strengthPerWeek,decimal)+row('Løb · ture/uge',s.runs,f.runsPerWeek,decimal)+
+      '</tbody></table><small class="chart-note">'+escapeHtml(formatShortDay(f.start)+' – '+formatShortDay(f.end))+' · '+f.loggedDays+' kostdage · '+f.weightEntries+' vejninger. Træning tæller registrerede pas.</small>'+
+      (f.incompleteDays?'<p class="chart-note">Muligvis ufuldstændig log: '+f.incompleteDays+' af de registrerede dage i perioden. De indgår i kostgennemsnittene.</p>':'')+'</section>';
   }
 
   function rollingWeightSummary(endDate, period = 7) {
     const current = Array.from({ length: period }, (_, i) => state.days[shiftDate(endDate, -i)]).filter(hasWeight).map(day => Number(day.weightKg));
     const previous = Array.from({ length: period }, (_, i) => state.days[shiftDate(endDate, -period - i)]).filter(hasWeight).map(day => Number(day.weightKg));
     const averageKg = averageNumbers(current), previousAverageKg = averageNumbers(previous);
-    return { averageKg, previousAverageKg, count: current.length, changeKg: averageKg == null || previousAverageKg == null ? null : averageKg - previousAverageKg };
+    return { averageKg, previousAverageKg, previousCount: previous.length, count: current.length, changeKg: averageKg == null || previousAverageKg == null ? null : averageKg - previousAverageKg };
   }
 
   function renderWeightAverage(trend, period = 7) {
     if (trend.averageKg == null) return `Registrér morgenvægt for at se gennemsnittet over ${period} dage`;
-    return `<strong>${formatWeight(trend.averageKg)} kg</strong> i gennemsnit · ${trend.count} vejning${trend.count === 1 ? '' : 'er'}${trend.changeKg == null ? '' : `<br>${signedWeight(trend.changeKg)} kg i forhold til de foregående ${period} dage`}`;
+    return `<strong>${formatWeight(trend.averageKg)} kg</strong> i gennemsnit · ${trend.count} vejning${trend.count === 1 ? '' : 'er'}${period===7?' · '+weightConfidence(trend.count):''}${trend.changeKg == null ? '' : `<br>${signedWeight(trend.changeKg)} kg i forhold til de foregående ${period} dage${period===7 && Math.min(trend.count,trend.previousCount)<3?' · usikkert skøn':''}`}`;
   }
 
   function weightWindow(end) {
@@ -444,7 +488,7 @@
   }
 
   function trendChart(days, kind) {
-    const protein = kind === 'protein', target = Number(state.settings.proteinTarget) || 160;
+    const protein = kind === 'protein', target = Number(state.settings.proteinTarget) || 150;
     const today = localDateKey(new Date()), count = days.length;
     const raw = date => {
       const d = state.days[date];
@@ -512,10 +556,15 @@
 
   function weeklyCsv(report) {
     const columns = ['week_start','week_end','weekly_average_weight_kg','weight_change_vs_previous_week_kg','weight_entries','logged_nutrition_days','average_recorded_calories','average_recorded_protein_g','weekly_strength_workouts','weekly_runs','weekly_long_bike_rides','creatine_days_out_of_7','vitamin_days_out_of_7','date','morning_weight_kg','nutrition_logged','daily_calories','daily_protein_g','creatine','vitamins','strength_workout','run','long_bike_ride','meal_section','meal_name','food_name','quantity_g','item_calories','item_protein_g','meal_calories','meal_protein_g','meal_description'];
+    columns.push('possibly_incomplete','protein_anchors','possibly_incomplete_days','days_at_least_150g','days_below_120g','weight_confidence','previous_weight_entries');
+    if(report.rollingFourWeeks) columns.push('rolling_28d_start','rolling_28d_end','rolling_28d_logged_days','rolling_28d_incomplete_days','rolling_28d_weigh_ins','rolling_28d_protein_per_day','rolling_28d_kcal_per_day','rolling_28d_weight_kg','rolling_28d_strength_per_week','rolling_28d_runs_per_week');
     const rows = [];
     const weekly = { week_start: report.weekStart, week_end: report.weekEnd, weekly_average_weight_kg: report.summary.averageWeightKg == null ? '' : roundExport(report.summary.averageWeightKg), weight_change_vs_previous_week_kg: report.summary.weightChangeKg == null ? '' : roundExport(report.summary.weightChangeKg), weight_entries: report.summary.weightEntries, logged_nutrition_days: report.summary.loggedNutritionDays, average_recorded_calories: report.summary.loggedNutritionDays ? roundExport(report.summary.averageCalories) : '', average_recorded_protein_g: report.summary.loggedNutritionDays ? roundExport(report.summary.averageProteinG) : '', weekly_strength_workouts: report.summary.strengthWorkouts, weekly_runs: report.summary.runs, weekly_long_bike_rides: report.summary.longBikeRides, vitamin_days_out_of_7: report.summary.vitaminDays, creatine_days_out_of_7: report.summary.creatineDays };
     report.days.forEach(day => {
       const daily = { ...weekly, date: day.date, morning_weight_kg: day.weightKg ?? '', nutrition_logged: yesNo(day.hasNutrition), daily_calories: day.hasNutrition ? roundExport(day.calories) : '', daily_protein_g: day.hasNutrition ? roundExport(day.proteinG) : '', creatine: yesNo(day.creatine), vitamins: yesNo(day.vitamins), strength_workout: yesNo(day.strengthWorkout), run: yesNo(day.run), long_bike_ride: yesNo(day.longBikeRide) };
+      Object.assign(daily,{possibly_incomplete:yesNo(day.possiblyIncomplete),protein_anchors:day.proteinAnchors,possibly_incomplete_days:report.summary.incompleteDays,days_at_least_150g:report.summary.proteinDays150,days_below_120g:report.summary.proteinDaysUnder120,weight_confidence:report.summary.weightConfidence,previous_weight_entries:report.summary.previousWeightEntries});
+      const f=report.rollingFourWeeks;
+      if(f) Object.assign(daily,{rolling_28d_start:f.start,rolling_28d_end:f.end,rolling_28d_logged_days:f.loggedDays,rolling_28d_incomplete_days:f.incompleteDays,rolling_28d_weigh_ins:f.weightEntries,rolling_28d_protein_per_day:f.proteinPerDay==null?'':roundExport(f.proteinPerDay),rolling_28d_kcal_per_day:f.caloriesPerDay==null?'':roundExport(f.caloriesPerDay),rolling_28d_weight_kg:f.averageWeightKg==null?'':roundExport(f.averageWeightKg),rolling_28d_strength_per_week:f.strengthPerWeek,rolling_28d_runs_per_week:f.runsPerWeek});
       if (!day.meals.length) { rows.push(daily); return; }
       day.meals.forEach(meal => {
         const mealBase = { ...daily, meal_section: meal.section, meal_name: meal.name, meal_calories: roundExport(meal.calories), meal_protein_g: roundExport(meal.proteinG), meal_description: meal.description };
@@ -638,11 +687,11 @@
   }
 
   function renderSettings() {
-    app.innerHTML = `<h1>Indstillinger</h1><div class="section-kicker">Udseende</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="theme-select">Tema</label><select id="theme-select"><option value="system" ${(state.settings.theme || 'system') === 'system' ? 'selected' : ''}>Følg systemet</option><option value="light" ${state.settings.theme === 'light' ? 'selected' : ''}>Lyst</option><option value="dark" ${state.settings.theme === 'dark' ? 'selected' : ''}>Mørkt</option></select></div></div><div class="section-kicker">Mål</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="protein-target">Dagligt proteinmål</label><input id="protein-target" type="number" inputmode="decimal" min="1" step="1" value="${Number(state.settings.proteinTarget) || 160}" /></div><div class="settings-row"><label class="settings-label" for="calorie-target">Dagligt kaloriepejlemærke</label><input id="calorie-target" type="number" inputmode="numeric" min="1" step="50" value="${Number(state.settings.calorieTarget) || 2500}" /><div class="settings-help">Kalorier vises som et pejlemærke. Protein er det primære mål.</div></div></div><div class="section-kicker">Claude</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="claude-api-key">API-nøgle til Claude</label><input id="claude-api-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…" value="${escapeAttr(state.settings.claudeApiKey || '')}" /><div class="settings-help">Nøglen gemmes kun i denne browser. Du kan altid registrere måltider uden AI.</div></div></div><div class="card settings-group"><div class="settings-row"><strong>Lagring</strong><div class="settings-help">Dine måltider, mål, tilskud, aktiviteter, vægt, indstillinger og Claude-nøgle gemmes i denne browser.</div></div></div>`;
+    app.innerHTML = `<h1>Indstillinger</h1><div class="section-kicker">Udseende</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="theme-select">Tema</label><select id="theme-select"><option value="system" ${(state.settings.theme || 'system') === 'system' ? 'selected' : ''}>Følg systemet</option><option value="light" ${state.settings.theme === 'light' ? 'selected' : ''}>Lyst</option><option value="dark" ${state.settings.theme === 'dark' ? 'selected' : ''}>Mørkt</option></select></div></div><div class="section-kicker">Mål</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="protein-target">Dagligt proteinmål</label><input id="protein-target" type="number" inputmode="decimal" min="1" step="1" value="${Number(state.settings.proteinTarget) || 150}" /></div><div class="settings-row"><label class="settings-label" for="calorie-target">Dagligt kaloriepejlemærke</label><input id="calorie-target" type="number" inputmode="numeric" min="1" step="50" value="${Number(state.settings.calorieTarget) || 2500}" /><div class="settings-help">Kalorier vises som et pejlemærke. Protein er det primære mål.</div></div></div><div class="section-kicker">Claude</div><div class="card settings-group"><div class="settings-row"><label class="settings-label" for="claude-api-key">API-nøgle til Claude</label><input id="claude-api-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…" value="${escapeAttr(state.settings.claudeApiKey || '')}" /><div class="settings-help">Nøglen gemmes kun i denne browser. Du kan altid registrere måltider uden AI.</div></div></div><div class="card settings-group"><div class="settings-row"><strong>Lagring</strong><div class="settings-help">Dine måltider, mål, tilskud, aktiviteter, vægt, indstillinger og Claude-nøgle gemmes i denne browser.</div></div></div>`;
     app.innerHTML = app.innerHTML.replace('<h1>Indstillinger</h1>', '<h1>Indstillinger</h1>' + backupSettingsHtml());
     bindBackupSettings();
     document.getElementById('theme-select').onchange = e => { state.settings.theme = e.target.value; applyTheme(); saveState(); toast('Temaet er gemt'); };
-    bindSetting('protein-target', 'proteinTarget', 160, 'Proteinmålet er gemt');
+    bindSetting('protein-target', 'proteinTarget', 150, 'Proteinmålet er gemt');
     bindSetting('calorie-target', 'calorieTarget', 2500, 'Kaloriepejlemærket er gemt');
     document.getElementById('claude-api-key').onchange = e => { state.settings.claudeApiKey = e.target.value.trim(); saveState(); toast('Claude-nøglen er gemt lokalt'); };
   }
