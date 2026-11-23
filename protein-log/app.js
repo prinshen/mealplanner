@@ -604,6 +604,14 @@
     const update = () => bindLibraryResults(input.value, results, meal => openMealLibrary(null, meal));
     input.oninput = update; update();
   }
+  function renameRecipe(meal, name) {
+    const key = meal.recipeKey || mealFingerprint(meal);
+    const section = meal.category || 'snacks';
+    const matches = m => (m.category || 'snacks') === section && (m.recipeKey || mealFingerprint(m)) === key;
+    const template = state.savedMeals.find(m => m.recipeKey && matches(m)) || state.savedMeals.find(matches);
+    if (template) Object.assign(template, {name, recipeKey: key});
+    else state.savedMeals.push({...clone(meal), recipeKey: key, name});
+  }
   function openMealLibrary(category = null, selectedMeal = null) {
     lockPage();
     modalRoot.innerHTML = `<div class="modal-backdrop"><div class="sheet"><div class="sheet-handle"></div><div class="sheet-head"><h2>Find a meal</h2><button class="close-button" id="close-library" aria-label="Close meal search">×</button></div>${category ? '' : `<div class="field"><label for="library-category">Add to</label><select id="library-category">${mealOptions(selectedMeal?.category || 'breakfast')}</select></div>`}<div class="field"><input id="meal-search" type="search" aria-label="Search previous meals" placeholder="Search meals or ingredients" /></div><div id="meal-search-results"></div></div></div>`;
@@ -612,6 +620,18 @@
     const choose = meal => openFoodModal(category || document.getElementById('library-category').value, null, meal);
     if (selectedMeal) {
       results.innerHTML = libraryResultsHtml([{ meal: selectedMeal, date: '', count: 0 }], false);
+      results.insertAdjacentHTML('beforeend', '<button class="secondary-button" id="rename-meal">Rename meal</button>');
+      document.getElementById('rename-meal').onclick = () => {
+        results.innerHTML = '<form id="rename-form"><div class="field"><label for="recipe-title">Meal name</label><input required id="recipe-title" value="' + escapeAttr(selectedMeal.name || selectedMeal.description || '') + '"></div><button class="primary-button">Save name</button></form>';
+        const title = document.getElementById('recipe-title');
+        title.focus(); title.select();
+        document.getElementById('rename-form').onsubmit = event => {
+          event.preventDefault();
+          if (!title.value.trim()) return toast('Enter a meal name');
+          renameRecipe(selectedMeal, title.value.trim());
+          saveState(); closeModal(); renderSaved(); toast('Meal renamed');
+        };
+      };
       results.querySelectorAll('[data-library-index]').forEach(button => button.onclick = () => choose(selectedMeal));
     } else bindLibraryResults('', results, choose);
     input.oninput = () => bindLibraryResults(input.value, results, choose);
@@ -733,6 +753,8 @@
         const knownIngredients = new Set(ingredientLibrary().map(item => ingredientKey(item.ingredient)));
         const recipeKey = originalMeal?.recipeKey || mealFingerprint(originalMeal || entry);
         entry.recipeKey = recipeKey;
+        const renamed = originalMeal && entry.name !== (originalMeal.name || originalMeal.description);
+        if (renamed) renameRecipe(originalMeal, entry.name);
         const templateIndex = state.savedMeals.findIndex(m => m.category === category && m.recipeKey === recipeKey);
         const prior = state.savedMeals[templateIndex] || mealLibrary('', category).find(x => (x.meal.recipeKey || mealFingerprint(x.meal)) === recipeKey)?.meal;
         const changed = !!originalMeal && ingredientEditFingerprint(startingIngredients) !== ingredientEditFingerprint(entry.ingredients);
@@ -743,7 +765,7 @@
             const match = origin && base?.ingredients.find(j => ingredientKey(j) === ingredientKey(origin));
             return { ...ing, amount: match ? match.amount : ing.amount };
           });
-          const template = calculateFromIngredients({ ...clone(entry), recipeKey, ingredients: clone(ingredients),
+          const template = calculateFromIngredients({ ...clone(entry), id: state.savedMeals[templateIndex]?.id || entry.id, recipeKey, ingredients: clone(ingredients),
             name: originalMeal && prior && entry.name === (originalMeal.name || originalMeal.description) ? prior.name : entry.name });
           if (templateIndex < 0) state.savedMeals.push(template); else state.savedMeals[templateIndex] = template;
         }
