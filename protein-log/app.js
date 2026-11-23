@@ -204,7 +204,7 @@
       ${state.copiedMeal ? `<div class="card copied-meal-card"><div class="copied-meal-heading"><div><small>Kopieret måltid</small><strong>${escapeHtml(state.copiedMeal.name)}</strong></div><button class="close-button" id="clear-copied-meal" aria-label="Fjern kopieret måltid">×</button></div><div class="copy-controls"><select id="paste-category" aria-label="Vælg måltidskategori">${mealOptions(state.copiedMeal.category)}</select><button class="primary-button" id="paste-meal">Indsæt måltid</button></div><div class="copy-footer"><span>Til: ${escapeHtml(isToday ? 'I dag' : formatDate(date))}</span>${isToday ? '' : '<button class="copy-today" id="copy-go-today">Gå til i dag</button>'}</div></div>` : ''}
       <h2 class="meals-heading">Måltider</h2>${MEAL_TYPES.map(type => renderMealSection(type, day)).join('')}
       <button class="card quick-add-toggle find-meal-button" id="find-meal">Find et måltid <span aria-hidden="true">⌕</span></button>
-      <div class="card activity-card"><div class="activity-head"><strong>Aktivitet</strong><small>Dagens aktiviteter</small></div><div class="activity-grid">${activityToggle('strength', 'Styrketræning', activities.strength)}${activityToggle('run', 'Løb', activities.run)}${activityToggle('longBike', 'Længere cykeltur', activities.longBike)}</div></div>
+      <div class="card activity-card"><div class="activity-head"><strong>Aktivitet</strong><small>Dagens aktiviteter</small></div><div class="activity-grid">${activityToggle('strength', 'Workout', activities.strength, 'Styrketræning')}${activityToggle('run', 'Løb', activities.run)}${activityToggle('longBike', 'Cykeltur', activities.longBike, 'Længere cykeltur')}</div></div>
       ${day.creatine ? supplementCardHtml('creatine', 'Kreatin', day.creatine) : ''}
       ${day.vitamins ? supplementCardHtml('vitamins', 'Vitaminer', day.vitamins) : ''}
       ${hasWeight(day) ? weightCardHtml(day) : ''}
@@ -329,8 +329,8 @@
     return `<details class="card meal-card"><summary class="meal-header">${heading}<span class="row-action">Åbn</span></summary>${entries.map(e => `<button class="meal-entry" data-entry-id="${escapeAttr(e.id)}"><span><strong>${escapeHtml(e.name || e.description || 'Måltid')}</strong>${mealBadge(e)}</span><span class="entry-macros"><strong>${roundMacro(e.protein)} g protein</strong><small>${Math.round(num(e.calories))} kcal</small></span></button>`).join('')}<div class="section-footer">${Math.round(calories)} kcal ${add}</div></details>`;
   }
 
-  function activityToggle(key, label, checked) {
-    return `<label class="activity-toggle"><input type="checkbox" data-activity="${key}" ${checked ? 'checked' : ''}/><span class="activity-check">✓</span><span>${label}</span></label>`;
+  function activityToggle(key, label, checked, fullLabel = label) {
+    return `<label class="activity-toggle"><input type="checkbox" aria-label="${fullLabel}" data-activity="${key}" ${checked ? 'checked' : ''}/><span class="activity-check">✓</span><span>${label}</span></label>`;
   }
 
   function renderWeekly() {
@@ -345,8 +345,8 @@
       <div class="week-nav"><button class="date-button" id="prev-week" aria-label="Forrige periode">‹</button><label class="week-picker-label" for="week-picker"><strong>${reviewPeriod === 7 ? escapeHtml(formatWeekLabel(selectedWeekStart)) : '30 dage frem til ' + escapeHtml(formatShortDay(selectedTrendEnd))}</strong><span>${reviewPeriod === 7 ? 'Vælg uge' : 'Vælg slutdato'}</span></label><input id="week-picker" class="week-picker" type="date" value="${reviewPeriod === 7 ? selectedWeekStart : selectedTrendEnd}"/><button class="date-button" id="next-week" aria-label="Næste periode">›</button></div>
       <div class="weekly-grid">
         <div class="card metric-card primary-metric"><span>Gennemsnitlig morgenvægt</span><strong>${s.averageWeightKg == null ? '—' : `${formatWeight(s.averageWeightKg)} kg`}</strong><small>${s.weightEntries} vejning${s.weightEntries === 1 ? '' : 'er'}${s.weightChangeKg == null ? '' : ` · ${signedWeight(s.weightChangeKg)} kg i forhold til ${comparison}`}</small></div>
-        <div class="card metric-card"><span>Registreret protein i gennemsnit</span><strong>${s.loggedNutritionDays ? `${roundMacro(s.averageProteinG)} g` : '—'}</strong><small>Registrerede dage: ${s.loggedNutritionDays}</small></div>
-        <div class="card metric-card"><span>Registrerede kalorier i gennemsnit</span><strong>${s.loggedNutritionDays ? Math.round(s.averageCalories).toLocaleString('da-DK') : '—'}</strong><small>${s.loggedNutritionDays ? 'kcal pr. registreret dag' : 'Ingen måltider registreret'}</small></div>
+        <div class="card metric-card"><span>Protein i snit</span><strong>${s.loggedNutritionDays ? `${roundMacro(s.averageProteinG)} g` : '—'}</strong><small>Registrerede dage: ${s.loggedNutritionDays}</small></div>
+        <div class="card metric-card"><span>Kalorier i snit</span><strong>${s.loggedNutritionDays ? Math.round(s.averageCalories).toLocaleString('da-DK') : '—'}</strong><small>${s.loggedNutritionDays ? 'kcal pr. registreret dag' : 'Ingen måltider registreret'}</small></div>
         <div class="card metric-card"><span>Træningspas</span><strong>${s.strengthWorkouts + s.runs + s.longBikeRides}</strong><small>${s.strengthWorkouts} styrke · ${s.runs} løb · ${s.longBikeRides} cykling</small></div>
         <div class="card metric-card"><span>Kreatin</span><strong>${s.creatineDays}/${reviewPeriod}</strong><small>dage taget</small></div><div class="card metric-card"><span>Vitaminer</span><strong>${s.vitaminDays}/${reviewPeriod}</strong><small>Multivitamin og D-vitamin</small></div>
       </div>
