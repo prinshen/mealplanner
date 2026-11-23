@@ -559,21 +559,21 @@
   }
   function mealLibrary(query = '', category = null) {
     const variants = new Map();
-    const add = (meal, date = '') => {
+    const add = (meal, date = '', position = -1) => {
       const section = MEAL_TYPES.includes(meal.category) ? meal.category : 'snacks';
       if (category && section !== category) return;
       const key = section + ':' + (meal.recipeKey || mealFingerprint(meal)), current = variants.get(key);
       const searchText = [meal.name, meal.description, ...(meal.ingredients || []).map(i => i.name)].join(' ').toLowerCase();
-      if (!current) variants.set(key, { meal: { ...clone(meal), category: section }, date, count: date ? 1 : 0, searchText });
+      if (!current) variants.set(key, { meal: { ...clone(meal), category: section }, date, position, count: date ? 1 : 0, searchText });
       else {
         if (date) current.count++;
         current.searchText += ' ' + searchText;
-        if (date && date >= current.date) { const quality = current.meal.quality; current.meal = { ...clone(meal), category: section }; current.date = date; if (!current.meal.quality && quality) current.meal.quality = quality; }
+        if (date && date >= current.date) { const quality = current.meal.quality; current.meal = { ...clone(meal), category: section }; current.date = date; current.position = position; if (!current.meal.quality && quality) current.meal.quality = quality; }
         if (meal.quality) current.meal.quality = meal.quality;
       }
     };
     state.savedMeals.forEach(meal => add(meal));
-    Object.entries(state.days).forEach(([date, day]) => (day.entries || []).forEach(meal => add(meal, date)));
+    Object.entries(state.days).forEach(([date, day]) => (day.entries || []).forEach((meal, i) => add(meal, date, i)));
     // Counts come from the log; the recipe offered for reuse comes from its latest explicit save.
     for (const template of state.savedMeals.filter(m => m.recipeKey)) {
       const item = variants.get(template.category + ':' + template.recipeKey);
@@ -583,9 +583,9 @@
     return [...variants.values()].filter(item => terms.every(term => item.searchText.includes(term)))
       .sort((a, b) => b.count - a.count || b.date.localeCompare(a.date) || String(a.meal.name || '').localeCompare(String(b.meal.name || '')));
   }
-  function libraryResultsHtml(items, grouped = true, expanded = false) {
+  function libraryResultsHtml(items, grouped = true, expanded = false, offset = 0) {
     if (!items.length) return '<div class="empty-card">No matching meals yet.</div>';
-    const card = (item, index) => `<button class="card library-meal" data-library-index="${index}"><span class="library-title"><strong>${escapeHtml(item.meal.name || item.meal.description || 'Meal')}</strong>${mealBadge(item.meal)}</span><span class="library-ingredients">${escapeHtml((item.meal.ingredients || []).map(i => `${roundInput(i.amount)} g ${i.name}`).join(' · ') || item.meal.description || '')}</span><span class="library-macros">${roundMacro(item.meal.protein)} g protein · ${Math.round(num(item.meal.calories))} kcal</span><small>${item.date ? `Used ${item.count} time${item.count === 1 ? '' : 's'} · Last logged ${escapeHtml(formatLongDate(item.date))}` : 'Previously saved meal'}</small></button>`;
+    const card = (item, index) => `<button class="card library-meal" data-library-index="${index + offset}"><span class="library-title"><strong>${escapeHtml(item.meal.name || item.meal.description || 'Meal')}</strong>${mealBadge(item.meal)}</span><span class="library-ingredients">${escapeHtml((item.meal.ingredients || []).map(i => `${roundInput(i.amount)} g ${i.name}`).join(' · ') || item.meal.description || '')}</span><span class="library-macros">${roundMacro(item.meal.protein)} g protein · ${Math.round(num(item.meal.calories))} kcal</span><small>${item.date ? `Used ${item.count} time${item.count === 1 ? '' : 's'} · Last logged ${escapeHtml(formatLongDate(item.date))}` : 'Previously saved meal'}</small></button>`;
     if (!grouped) return items.map(card).join('');
     return MEAL_TYPES.map(category => {
       const cards = items.map((item, index) => item.meal.category === category ? card(item, index) : '').join('');
@@ -652,9 +652,13 @@
       const saveControls = showNutrition ? `${existing ? '<div class="copy-entry-action"><button class="secondary-button" id="copy-entry">Copy meal</button><small>Copy these values to paste on another day</small></div>' : ''}<div class="modal-actions">${existing ? '<button class="secondary-button danger" id="delete-entry">Delete</button>' : '<button class="secondary-button" id="cancel-entry">Cancel</button>'}<button class="primary-button" id="save-entry">${existing ? 'Save meal' : 'Add meal'}</button></div>` : '<div class="modal-actions single"><button class="secondary-button" id="cancel-entry">Cancel</button></div>';
       root.innerHTML = `${!existing ? '<button class="secondary-button search-meal-button" id="search-previous-meals">Find a previous meal</button>' : ''}<div class="field"><label for="meal-name">Meal name</label><input id="meal-name" placeholder="e.g. Skyr with muesli" value="${escapeAttr(draft.name || '')}" /></div>${showNutrition ? '<button type="button" class="manual-entry-button" id="toggle-analysis" aria-expanded="false" aria-controls="analysis-fields">Meal description &amp; AI analysis</button><div id="analysis-fields" hidden>' : ''}<div class="field"><label for="food-text">Description for Claude (optional for manual entry)</label><textarea id="food-text" placeholder="e.g. skyr with muesli">${escapeHtml(draft.description || draft.name || '')}</textarea></div><div class="analysis-action"><button class="primary-button" id="analyze-food">Analyze with Claude</button>${entryMode === 'choice' ? '<button class="manual-entry-button" id="manual-food">Enter manually</button>' : '<small>Run again if the description changes</small>'}</div>${showNutrition ? '</div>' : ''}<div id="food-error"></div>${ingredientEditor}${saveControls}`;
       if (entryMode === 'choice') {
-        const suggestions = mealLibrary('', category).slice(0, 3);
+        const logged = mealLibrary('', category).filter(item => item.count > 0);
+        const popular = logged.slice(0, 3);
+        const recent = [...logged].sort((a,b) => b.date.localeCompare(a.date) || b.position - a.position).slice(0, 3);
+        const suggestions = [...popular, ...recent];
         if (suggestions.length) {
-          root.insertAdjacentHTML('beforeend', `<div class="meal-suggestions"><h3 class="section-kicker">Most used for ${MEAL_LABELS[category].toLowerCase()}</h3><div class="settings-help">Choose a meal, then adjust quantities.</div>${libraryResultsHtml(suggestions, false)}</div>`);
+          const section = MEAL_LABELS[category].toLowerCase();
+          root.insertAdjacentHTML('beforeend', `<div class="meal-suggestions"><h3 class="section-kicker">Recently used for ${section}</h3>${libraryResultsHtml(recent, false, false, popular.length)}<h3 class="section-kicker">Most used for ${section}</h3>${libraryResultsHtml(popular, false)}</div>`);
           root.querySelectorAll('[data-library-index]').forEach(button => button.onclick = () => openFoodModal(category, null, clone(suggestions[Number(button.dataset.libraryIndex)].meal)));
         }
       }
